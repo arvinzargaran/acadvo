@@ -10,6 +10,7 @@ from app.models.degree import DegreeRequirement, Course, CourseStatus
 from app.models.project import Project, ProjectStatus, MilestoneStatus
 from app.models.career import CareerTarget, TimelineEvent
 from app.models.suggestion import AISuggestion
+from app.services.degree import _is_constraint_bucket
 
 
 async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
@@ -123,8 +124,11 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
             remaining = credits_required - completed_credits
             pct = (completed_credits / credits_required * 100) if credits_required > 0 else 0
 
-            total_required += credits_required
-            total_completed += completed_credits
+            # Constraint buckets (e.g. "Upper Year Requirement") overlap other buckets'
+            # credits, so they must NOT be added to the degree total (double-counting).
+            if not _is_constraint_bucket(req.bucket_name):
+                total_required += credits_required
+                total_completed += completed_credits
 
             degree_lines.append(f"\nBucket: {req.bucket_name} — {completed_credits:.2f} / {credits_required:.2f} credits ({pct:.1f}%)")
 
