@@ -215,6 +215,10 @@ async def delete_credential(
 
 _TOTAL_BUCKET_KEYWORDS = {"degree total", "total credits", "program total"}
 _META_BUCKET_KEYWORDS = {"gpa", "average"}
+# Constraint buckets express a rule over other buckets' credits (e.g. "42 credits
+# must be at the 3000-level") rather than adding new required credits. They overlap
+# Major/electives, so they must be shown as progress but EXCLUDED from the total.
+_CONSTRAINT_BUCKET_KEYWORDS = {"upper year", "3000-level", "or higher"}
 
 
 def _is_total_bucket(name: str) -> bool:
@@ -225,6 +229,11 @@ def _is_total_bucket(name: str) -> bool:
 def _is_meta_bucket(name: str) -> bool:
     lower = name.lower()
     return any(kw in lower for kw in _META_BUCKET_KEYWORDS)
+
+
+def _is_constraint_bucket(name: str) -> bool:
+    lower = name.lower()
+    return any(kw in lower for kw in _CONSTRAINT_BUCKET_KEYWORDS)
 
 
 async def get_degree_summary(user_id: uuid.UUID, db: AsyncSession) -> dict:
@@ -279,7 +288,10 @@ async def get_degree_summary(user_id: uuid.UUID, db: AsyncSession) -> dict:
                 "at_risk": at_risk,
             }
         )
-        total_required += credits_required
+        # Constraint buckets (e.g. "Upper Year Requirement") overlap other buckets'
+        # credits, so they show progress but must NOT inflate the required total.
+        if not _is_constraint_bucket(req.bucket_name):
+            total_required += credits_required
         total_completed += credits_completed
 
     # Use degree total override if available, otherwise sum of bucket requirements
@@ -291,40 +303,14 @@ async def get_degree_summary(user_id: uuid.UUID, db: AsyncSession) -> dict:
         (display_completed / display_total * 100.0) if display_total > 0 else 0.0
     )
 
-    # GPA calculation
-    gpa_points = {
-        "A+": 4.0, "A": 4.0, "A-": 3.7,
-        "B+": 3.3, "B": 3.0, "B-": 2.7,
-        "C+": 2.3, "C": 2.0, "C-": 1.7,
-        "D+": 1.3, "D": 1.0, "D-": 0.7,
-        "F": 0.0, "E": 0.0,
-    }
-    weighted_sum = 0.0
-    gpa_credits = 0.0
-    semester_gpas = {}
-    for course in courses:
-        if course.status == CourseStatus.completed and course.grade:
-            grade_upper = course.grade.strip().upper()
-            if grade_upper in gpa_points:
-                weight = float(course.credit_value)
-                points = gpa_points[grade_upper] * weight
-                weighted_sum += points
-                gpa_credits += weight
-                term = course.term or "Unknown"
-                if term not in semester_gpas:
-                    semester_gpas[term] = {"points": 0.0, "credits": 0.0}
-                semester_gpas[term]["points"] += points
-                semester_gpas[term]["credits"] += weight
-
-    cumulative_gpa = round(weighted_sum / gpa_credits, 2) if gpa_credits > 0 else None
-    semester_gpa_list = []
-    for term, data in sorted(semester_gpas.items()):
-        if data["credits"] > 0:
-            semester_gpa_list.append({
-                "term": term,
-                "gpa": round(data["points"] / data["credits"], 2),
-                "credits": data["credits"],
-            })
+    # GPA — delegate to the scale-aware calculator so the summary matches
+    # /degree/gpa and uses the student's correct university grading scale.
+    gpa_data = await calculate_gpa(user_id, db)
+    cumulative_gpa = gpa_data["cumulative_gpa"]
+    semester_gpa_list = [
+        {"term": t["term"], "gpa": t["gpa"], "credits": t["credits"]}
+        for t in gpa_data["term_gpas"]
+    ]
 
     return {
         "buckets": buckets,
@@ -416,6 +402,10 @@ async def calculate_gpa(user_id: uuid.UUID, db: AsyncSession) -> dict:
         highest_term = max(term_gpas, key=lambda t: t["gpa"])
         lowest_term = min(term_gpas, key=lambda t: t["gpa"])
 
+    # 7. Subject-subset (major) GPAs — the number some programs gate on
+    #    (e.g. York gates 2000+ EECS courses behind a 4.50 EECS-major GPA).
+    major_gpas = [await calculate_major_gpa(user_id, db, faculty_prefix="EECS")]
+
     return {
         "cumulative_gpa": cumulative_gpa,
         "term_gpas": term_gpas,
@@ -426,6 +416,62 @@ async def calculate_gpa(user_id: uuid.UUID, db: AsyncSession) -> dict:
         "scale_max": scale_max,
         "scale_name": scale_name,
         "using_fallback": using_fallback,
+        "major_gpas": major_gpas,
+    }
+
+
+async def calculate_major_gpa(
+    user_id: uuid.UUID,
+    db: AsyncSession,
+    faculty_prefix: str = "EECS",
+    gate: float = 4.50,
+) -> dict:
+    """Calculate the major/subject-subset GPA over completed graded courses whose
+    course_code contains the given faculty prefix (case-insensitive; handles both
+    'LE/EECS 2030' and 'EECS 2030'), using the SAME university-specific grading
+    scale as calculate_gpa. Returns scope, gpa, credits and whether it meets the
+    program gate (e.g. York's 4.50 EECS-major GPA gate)."""
+    # 1. Fetch user's university and resolve the grading scale
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    university = user.university if user else None
+    scale, _ = get_scale(university)
+    grade_map = build_grade_map(scale)
+
+    # 2. Fetch completed courses
+    courses_result = await db.execute(
+        select(Course).where(
+            Course.user_id == user_id,
+            Course.status == CourseStatus.completed,
+        )
+    )
+    courses = list(courses_result.scalars().all())
+
+    # 3. Filter to the subject subset and compute the weighted GPA
+    prefix = faculty_prefix.strip().upper()
+    weighted_sum = 0.0
+    total_credits = 0.0
+    for course in courses:
+        if not course.grade:
+            continue
+        if prefix not in (course.course_code or "").upper():
+            continue
+        grade_upper = course.grade.strip().upper()
+        if grade_upper not in grade_map:
+            logger.warning(
+                "Unrecognized grade '%s' for course %s — skipping", course.grade, course.course_code
+            )
+            continue
+        credits = float(course.credit_value)
+        weighted_sum += grade_map[grade_upper] * credits
+        total_credits += credits
+
+    gpa = round(weighted_sum / total_credits, 2) if total_credits > 0 else None
+    return {
+        "scope": faculty_prefix,
+        "gpa": gpa,
+        "credits": total_credits,
+        "meets_gate": gpa is not None and gpa >= gate,
     }
 
 

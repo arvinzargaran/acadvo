@@ -192,6 +192,13 @@ class TermGPA(BaseModel):
     course_count: int
 
 
+class MajorGPA(BaseModel):
+    scope: str
+    gpa: float | None
+    credits: float
+    meets_gate: bool
+
+
 class GPAResponse(BaseModel):
     cumulative_gpa: float | None
     term_gpas: list[TermGPA]
@@ -202,3 +209,4 @@ class GPAResponse(BaseModel):
     scale_max: float
     scale_name: str
     using_fallback: bool
+    major_gpas: list[MajorGPA] = []
