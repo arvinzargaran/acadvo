@@ -1,0 +1,44 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    # No host port mapping — DB is only reachable within the Docker network
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    # Bind to loopback: only a same-host TLS reverse proxy (nginx/Caddy) should
+    # reach the API. Publishing 8000 on 0.0.0.0 while --proxy-headers is on lets
+    # clients hit uvicorn directly and spoof X-Forwarded-For to evade rate limits.
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    # --proxy-headers trusts X-Forwarded-For ONLY from the IPs in
+    # --forwarded-allow-ips. Set FORWARDED_ALLOW_IPS to your reverse proxy's IP;
+    # it defaults to loopback (correct when the proxy runs on this host). Never
+    # set it to '*' — that lets any client spoof their IP and bypass rate limits.
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=${FORWARDED_ALLOW_IPS:-127.0.0.1}"
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

@@ -1,0 +1,56 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-acadvo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-acadvo}
+      POSTGRES_DB: ${POSTGRES_DB:-acadvo}
+    # Bind to loopback only — default dev creds are weak, don't expose to the LAN
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U acadvo"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Dev-only: enables /docs and /redoc
+      DEBUG: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    # --no-proxy-headers: don't trust X-Forwarded-For (default dev has no proxy),
+    # so request.client.host is the real peer and rate limits can't be spoofed.
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --no-proxy-headers"
+
+  frontend:
+    build:
+      context: ./frontend
+      target: builder
+    ports:
+      - "5173:5173"
+    # Only the public API URL — never the full .env (Groq key, JWT secret, DB
+    # password have no business in the frontend container)
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host 0.0.0.0
+
+volumes:
+  pgdata:
