@@ -340,6 +340,9 @@ def _sanitize_plan(plan: dict, ctx: dict) -> dict:
     # correctly even if the model emitted them out of order.
     ordered = sorted(plan.get("semesters", []), key=lambda s: _term_sort_key(s.get("term", "")))
 
+    # Track codes already placed anywhere in THIS plan so the same course can't be
+    # scheduled in two different semesters.
+    placed_codes: set[str] = set()
     cleaned_semesters = []
     for sem in ordered:
         term = sem.get("term", "")
@@ -356,26 +359,34 @@ def _sanitize_plan(plan: dict, ctx: dict) -> dict:
         this_semester_codes = []
         for course in sem.get("courses", []):
             code = normalize_course_code(course.get("course_code", ""))
+            if code in placed_codes or code in this_semester_codes:
+                # Already scheduled in an earlier semester or earlier in this one — no duplicates.
+                continue
             entry = catalog.get(code)
-            if entry is None:
-                # Fabricated / non-catalog code — drop it entirely.
+            if entry is None and catalog:
+                # Catalog is loaded but this code isn't in it → fabricated; drop it.
+                # (When the catalog is empty/unavailable we fail OPEN below rather
+                # than nuking the whole plan.)
                 continue
 
-            # Overwrite with authoritative catalog values.
             course["course_code"] = code
-            course["course_name"] = entry["course_name"]
-            course["credits"] = entry["credits"]
+            if entry is not None:
+                # Overwrite with authoritative catalog values.
+                course["course_name"] = entry["course_name"]
+                course["credits"] = entry["credits"]
             course["already_in_plan"] = code in all_existing_codes
 
             # Plan-aware eligibility: prereqs satisfied by completed OR
             # earlier-scheduled courses; GPA gates stay blocked on actual GPA.
-            blocked_reason = evaluate_entry(
-                entry, scheduled_before, gpa_by_scope, plan_phrasing=True
-            )
-            if blocked_reason:
-                course["blocked_reason"] = blocked_reason
-            else:
-                course.pop("blocked_reason", None)
+            # Only enforceable when we have a catalog entry to read prereqs/gate from.
+            if entry is not None:
+                blocked_reason = evaluate_entry(
+                    entry, scheduled_before, gpa_by_scope, plan_phrasing=True
+                )
+                if blocked_reason:
+                    course["blocked_reason"] = blocked_reason
+                else:
+                    course.pop("blocked_reason", None)
 
             courses.append(course)
             this_semester_codes.append(code)
@@ -387,8 +398,10 @@ def _sanitize_plan(plan: dict, ctx: dict) -> dict:
             sem.setdefault("semester_notes", "")
             sem["semester_notes"] += f" (Capped to {MAX_COURSES_PER_SEMESTER} courses)"
 
-        # Courses scheduled THIS semester unlock prereqs for LATER semesters only.
+        # Courses scheduled THIS semester unlock prereqs for LATER semesters only,
+        # and are recorded so they can't be duplicated in a later semester.
         scheduled_before.update(this_semester_codes)
+        placed_codes.update(this_semester_codes)
 
         if courses:
             sem["courses"] = courses
