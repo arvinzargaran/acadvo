@@ -111,6 +111,56 @@ async def _suggest_courses(inp: dict, user_id: uuid.UUID, conv_id: uuid.UUID | N
 async def _add_course(inp: dict, user_id: uuid.UUID, conv_id: uuid.UUID | None, db: AsyncSession) -> dict:
     if err := _require(inp, "course_code", "course_name", "credit_value"):
         return {"error": err}
+
+    # Reuse the same catalog + eligibility logic that grounds recommendations, so
+    # the AI can never write a course the student is not actually eligible for and
+    # never persist a fabricated code / wrong name-credits it made up in chat.
+    from app.services.catalog import get_catalog
+    from app.services.document_parser import normalize_course_code
+    from app.services.eligibility import (
+        evaluate_entry,
+        get_completed_codes,
+        gpa_by_scope_for_catalog,
+    )
+
+    # Fetch the user (needed for .university, and the model doesn't have it yet).
+    user_result = await db.execute(select(User).where(User.id == user_id))
+    user = user_result.scalar_one()
+
+    # Canonicalise the code up front — dedupe, catalog lookup and the stored row
+    # all key off the normalized form so we never create inconsistent-prefix twins.
+    code = normalize_course_code(inp["course_code"])
+    course_name = inp["course_name"]
+    credit_value = inp["credit_value"]
+    term = inp.get("term")
+
+    # Dedupe: refuse if the student already has this canonical code on their plan.
+    existing_result = await db.execute(select(Course).where(Course.user_id == user_id))
+    for existing in existing_result.scalars():
+        if normalize_course_code(existing.course_code) == code:
+            return {
+                "error": f"{code} is already on this student's plan; not adding a duplicate.",
+                "duplicate": True,
+                "course_id": str(existing.id),
+            }
+
+    # Catalog-grounded eligibility check. Fail OPEN when the code isn't in the
+    # catalog (unseeded / other university) — allow the add but still normalize.
+    catalog = await get_catalog(user.university or "York University", db, user_id=user_id)
+    entry = catalog.get(code)
+    if entry is not None:
+        satisfied = await get_completed_codes(user_id, db)
+        gpa_by_scope = await gpa_by_scope_for_catalog(catalog, user_id, db)
+        blocked = evaluate_entry(entry, satisfied, gpa_by_scope)
+        if blocked:
+            return {
+                "error": f"Cannot add {code}: {blocked}",
+                "blocked_reason": blocked,
+            }
+        # Eligible AND in the catalog — trust the catalog, not the model's text.
+        course_name = entry["course_name"]
+        credit_value = entry["credits"]
+
     # Find the requirement bucket by name
     bucket_id = None
     bucket_name = inp.get("requirement_bucket")
@@ -127,11 +177,11 @@ async def _add_course(inp: dict, user_id: uuid.UUID, conv_id: uuid.UUID | None, 
 
     course = Course(
         user_id=user_id,
-        course_code=inp["course_code"],
-        course_name=inp["course_name"],
-        credit_value=inp["credit_value"],
+        course_code=code,
+        course_name=course_name,
+        credit_value=credit_value,
         status=CourseStatus(inp.get("status", "planned")),
-        term=inp.get("term"),
+        term=term,
         requirement_bucket_id=bucket_id,
     )
     db.add(course)
@@ -141,7 +191,7 @@ async def _add_course(inp: dict, user_id: uuid.UUID, conv_id: uuid.UUID | None, 
     return {
         "success": True,
         "course_id": str(course.id),
-        "message": f"Added {course.course_code} ({course.course_name}) to {inp.get('term', 'unscheduled')} as {course.status.value}",
+        "message": f"Added {course.course_code} ({course.course_name}) to {term or 'unscheduled'} as {course.status.value}",
     }
 
 async def _update_course_status(inp: dict, user_id: uuid.UUID, conv_id: uuid.UUID | None, db: AsyncSession) -> dict:
@@ -154,10 +204,24 @@ async def _update_course_status(inp: dict, user_id: uuid.UUID, conv_id: uuid.UUI
     if not course:
         return {"error": "Course not found"}
 
+    # No-op guard: a read-only intent ("what is my status/grade?") must never turn
+    # into a write. Only mutate — and only commit — on a REAL change.
+    changed = False
     if "status" in inp:
-        course.status = CourseStatus(inp["status"])
-    if "grade" in inp:
+        new_status = CourseStatus(inp["status"])
+        if course.status != new_status:
+            course.status = new_status
+            changed = True
+    if "grade" in inp and course.grade != inp["grade"]:
         course.grade = inp["grade"]
+        changed = True
+
+    if not changed:
+        return {
+            "success": True,
+            "no_op": True,
+            "message": f"No change: {course.course_code} is already status={course.status.value}, grade={course.grade}.",
+        }
 
     await db.commit()
     return {
