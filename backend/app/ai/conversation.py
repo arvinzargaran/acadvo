@@ -1,14 +1,26 @@
 import json
 import logging
+import random
 import time
 import uuid
 
-from groq import RateLimitError as GroqRateLimitError
+from groq import (
+    APIConnectionError as GroqAPIConnectionError,
+    APIStatusError as GroqAPIStatusError,
+    APITimeoutError as GroqAPITimeoutError,
+    InternalServerError as GroqInternalServerError,
+    RateLimitError as GroqRateLimitError,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.ai.client import get_groq_client, record_ai_success, record_ai_failure
+from app.ai.client import (
+    AIUnavailableError,
+    get_groq_client,
+    record_ai_success,
+    record_ai_failure,
+)
 from app.ai.context import build_system_prompt
 from app.ai.tools import get_groq_tools
 from app.ai.tool_executor import execute_tool
@@ -20,6 +32,34 @@ logger = logging.getLogger("acadvo.ai")
 
 MAX_TOOL_ROUNDS = 10
 MAX_HISTORY_MESSAGES = 50
+
+# Retry policy for transient Groq failures (5xx / connection / timeout / rate
+# limit). Up to 3 attempts with exponential backoff + small jitter.
+AI_MAX_ATTEMPTS = 3
+AI_BACKOFF_BASE = 0.5  # seconds; delays ~0.5s, 1.0s, 2.0s
+AI_BACKOFF_JITTER = 0.25  # seconds; added uniformly on top of each delay
+
+
+def _is_transient_groq_error(exc: Exception) -> bool:
+    """Return True for retryable Groq failures.
+
+    Transient: connection errors, timeouts, 5xx server errors, and rate limits.
+    Non-transient 4xx (bad request / auth / not found) are NOT retried.
+    """
+    if isinstance(
+        exc,
+        (
+            GroqAPIConnectionError,  # includes GroqAPITimeoutError
+            GroqAPITimeoutError,
+            GroqInternalServerError,
+            GroqRateLimitError,
+        ),
+    ):
+        return True
+    if isinstance(exc, GroqAPIStatusError):
+        status = getattr(exc, "status_code", None)
+        return status is not None and status >= 500
+    return False
 
 
 def _extract_usage(response) -> dict | None:
@@ -87,21 +127,47 @@ async def send_message(
         """
         nonlocal total_prompt_tokens, total_completion_tokens
         call_start = time.perf_counter()
-        try:
-            resp = client.chat.completions.create(
-                model=settings.GROQ_MODEL,
-                messages=messages,
-                tools=tools,
-                tool_choice="auto",
-            )
-            record_ai_success()
-        except GroqRateLimitError:
-            logger.warning("groq rate limited", extra={"ai_round": round_no})
-            raise
-        except Exception:
-            record_ai_failure()
-            logger.exception("groq call failed", extra={"ai_round": round_no})
-            raise
+        resp = None
+        for attempt in range(AI_MAX_ATTEMPTS):
+            try:
+                resp = client.chat.completions.create(
+                    model=settings.GROQ_MODEL,
+                    messages=messages,
+                    tools=tools,
+                    tool_choice="auto",
+                )
+                record_ai_success()
+                break
+            except Exception as exc:
+                if not _is_transient_groq_error(exc):
+                    # Non-transient (4xx bad request / auth) — fail fast.
+                    record_ai_failure()
+                    logger.exception("groq call failed", extra={"ai_round": round_no})
+                    raise
+
+                if attempt + 1 >= AI_MAX_ATTEMPTS:
+                    # Exhausted retries on a transient error — trip the circuit
+                    # breaker and surface a graceful "AI unavailable" signal
+                    # (router maps AIUnavailableError -> 503) instead of a 500.
+                    record_ai_failure()
+                    logger.warning(
+                        "groq transient failure, retries exhausted",
+                        extra={"ai_round": round_no, "attempts": attempt + 1},
+                    )
+                    raise AIUnavailableError() from exc
+
+                delay = AI_BACKOFF_BASE * (2 ** attempt) + random.uniform(
+                    0, AI_BACKOFF_JITTER
+                )
+                logger.warning(
+                    "groq transient failure, retrying",
+                    extra={
+                        "ai_round": round_no,
+                        "attempt": attempt + 1,
+                        "retry_in_ms": round(delay * 1000, 1),
+                    },
+                )
+                time.sleep(delay)
 
         duration_ms = round((time.perf_counter() - call_start) * 1000, 1)
         extra = {"ai_round": round_no, "duration_ms": duration_ms}
