@@ -124,6 +124,17 @@ class ParsedCourse(BaseModel):
     term: str | None = None
     status: CourseStatusType = "not_scheduled"
     grade: str | None = None
+    # Additive, optional fields (backward-compatible).
+    # prerequisites: list of requirement groups; each group is a list of
+    # alternative canonical codes (AND across groups, OR within a group).
+    prerequisites: list[list[str]] = Field(default_factory=list)
+    # alternatives: other canonical codes that satisfy this same slot
+    # (from collapsed "A or B" rows).
+    alternatives: list[str] = Field(default_factory=list)
+    # prerequisites_raw: verbatim "Notes / Prerequisites" text, if any.
+    prerequisites_raw: str | None = None
+    # gpa_gate: structured minimum-GPA gate, e.g. {"scope": "EECS", "min": 4.5}.
+    gpa_gate: dict | None = None
 
 
 class ParsedDegreeDocument(BaseModel):
