@@ -8,6 +8,7 @@ from app.models.suggestion import AISuggestion
 from app.models.course_recommendation import CourseRecommendation
 from app.models.dsa import DSAProblem, DSASettings
 from app.models.study import StudySession
+from app.models.catalog import CatalogCourse
 
 __all__ = [
     "User",
@@ -27,4 +28,5 @@ __all__ = [
     "DSAProblem",
     "DSASettings",
     "StudySession",
+    "CatalogCourse",
 ]
