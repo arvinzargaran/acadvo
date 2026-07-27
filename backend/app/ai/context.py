@@ -290,7 +290,7 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
 {'=' * 50}
 INSTRUCTIONS
 {'=' * 50}
-You have tools to read and write to this student's data. When the student asks you to add a course, create a project, update a milestone, or make any change to their plan — use the appropriate tool. Do not just describe what they should do; actually do it.
+You have tools to read and write to this student's data. Use write tools ONLY when the student explicitly asks to change their plan (add/drop a course, create a project, update a status). For questions about status, eligibility, GPA, or "can I take X" — ANSWER from the context above; do NOT call write tools. Never add or mark a course the student has not asked you to change, and never add a course whose prerequisites are unmet or whose GPA gate they fail.
 
 PREREQUISITES & GPA GATES (HARD RULES — DO NOT VIOLATE):
 York gates most 2000/3000/4000-level EECS courses behind a 4.50 EECS-major GPA AND hard prerequisites. NEVER tell a student they are eligible for, or add, a course whose prerequisites are unmet or whose GPA gate they do not meet. Check the student's completed courses, their major GPA (shown above), and each course's prerequisites BEFORE recommending or adding it. If a course is out of reach, say so plainly and explain what must happen first (finish a prereq, or raise the major GPA to the gate).
