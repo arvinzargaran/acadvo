@@ -10,7 +10,10 @@ from app.models.degree import DegreeRequirement, Course, CourseStatus
 from app.models.project import Project, ProjectStatus, MilestoneStatus
 from app.models.career import CareerTarget, TimelineEvent
 from app.models.suggestion import AISuggestion
-from app.services.degree import _is_constraint_bucket
+from app.services.catalog import get_catalog
+from app.services.degree import _is_constraint_bucket, calculate_gpa
+from app.services.document_parser import normalize_course_code
+from app.services.eligibility import format_prereqs
 
 
 async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
@@ -56,6 +59,11 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
         .limit(20)
     )
     timeline_events = timeline_result.scalars().all()
+
+    # GPA (cumulative + major GPAs with gate status) and the real course catalog,
+    # so we can surface prerequisites and GPA gates the AI must respect.
+    gpa_data = await calculate_gpa(user_id, db)
+    catalog = await get_catalog(user.university or "York University", db, user_id)
 
     # Build the prompt
     sections = []
@@ -159,8 +167,54 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
         overall_pct = (total_completed / total_required * 100) if total_required > 0 else 0
         degree_lines.insert(4, f"Overall: {total_completed:.2f} / {total_required:.2f} credits completed ({overall_pct:.1f}%)")
 
+        # GPA + gate status — insert right under the overall line.
+        gpa_lines = []
+        if gpa_data.get("cumulative_gpa") is not None:
+            gpa_lines.append(
+                f"Cumulative GPA: {gpa_data['cumulative_gpa']} (out of {gpa_data.get('scale_max', 9.0)})"
+            )
+        for mg in gpa_data.get("major_gpas", []):
+            scope = mg.get("scope", "")
+            gpa_val = mg.get("gpa")
+            if gpa_val is None:
+                continue
+            if mg.get("meets_gate"):
+                gpa_lines.append(
+                    f"{scope} major GPA: {gpa_val} (meets the 4.50 gate for 2000+ {scope} courses)"
+                )
+            else:
+                gpa_lines.append(
+                    f"{scope} major GPA: {gpa_val} (BELOW the 4.50 gate required for 2000+ {scope} courses)"
+                )
+        for i, line in enumerate(gpa_lines):
+            degree_lines.insert(5 + i, line)
+
         for bucket_name, remaining in at_risk_buckets:
             degree_lines.append(f"\n⚠ AT-RISK: {bucket_name} — {remaining:.2f} credits remaining")
+
+        # Per-course prerequisites for planned / not-scheduled courses, so the AI
+        # knows what must be completed first before recommending or adding them.
+        prereq_lines = []
+        for c in all_courses:
+            if c.status not in (CourseStatus.planned, CourseStatus.not_scheduled):
+                continue
+            code = normalize_course_code(c.course_code)
+            entry = catalog.get(code)
+            if not entry:
+                continue
+            prereqs = entry.get("prerequisites")
+            gate = entry.get("gpa_gate")
+            if not prereqs and not gate:
+                continue
+            bits = []
+            if prereqs:
+                bits.append(f"prereqs {format_prereqs(prereqs)}")
+            if gate:
+                bits.append(f"gate {gate.get('scope', '')} GPA ≥ {float(gate.get('min', 4.5)):.2f}")
+            prereq_lines.append(f"  - {code}: {'; '.join(bits)}")
+        if prereq_lines:
+            degree_lines.append("\nPrerequisites / gates for planned & not-scheduled courses:")
+            degree_lines.extend(prereq_lines)
 
         sections.append("\n".join(degree_lines))
 
@@ -237,6 +291,9 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
 INSTRUCTIONS
 {'=' * 50}
 You have tools to read and write to this student's data. When the student asks you to add a course, create a project, update a milestone, or make any change to their plan — use the appropriate tool. Do not just describe what they should do; actually do it.
+
+PREREQUISITES & GPA GATES (HARD RULES — DO NOT VIOLATE):
+York gates most 2000/3000/4000-level EECS courses behind a 4.50 EECS-major GPA AND hard prerequisites. NEVER tell a student they are eligible for, or add, a course whose prerequisites are unmet or whose GPA gate they do not meet. Check the student's completed courses, their major GPA (shown above), and each course's prerequisites BEFORE recommending or adding it. If a course is out of reach, say so plainly and explain what must happen first (finish a prereq, or raise the major GPA to the gate).
 
 When giving advice:
 - Be specific, not generic. Reference their actual courses, projects, and deadlines.
