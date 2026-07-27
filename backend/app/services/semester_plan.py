@@ -21,7 +21,14 @@ logger = logging.getLogger(__name__)
 from app.models.career import CareerTarget
 from app.models.degree import Course, CourseStatus, DegreeRequirement
 from app.models.user import User
+from app.services.catalog import get_catalog
 from app.services.degree import get_degree_summary
+from app.services.document_parser import normalize_course_code
+from app.services.eligibility import (
+    evaluate_entry,
+    format_allowed_courses,
+    gpa_by_scope_for_catalog,
+)
 
 MAX_COURSES_PER_SEMESTER = 5
 
@@ -130,6 +137,15 @@ async def _gather_context(
         skip_winters=skip_winters,
     )
 
+    # Ground the plan in the real catalog and precompute the student's major GPA
+    # for every gate scope (used to keep gated courses blocked in _sanitize_plan).
+    university = user.university or "York University"
+    catalog = await get_catalog(university, db, user_id)
+    gpa_by_scope = await gpa_by_scope_for_catalog(catalog, user_id, db)
+    completed_codes = {
+        normalize_course_code(c.course_code) for c in completed if c.course_code
+    }
+
     return {
         "user": user,
         "summary": summary,
@@ -143,6 +159,9 @@ async def _gather_context(
         "current_semester": _current_semester(),
         "skip_summers": skip_summers,
         "skip_winters": skip_winters,
+        "catalog": catalog,
+        "gpa_by_scope": gpa_by_scope,
+        "completed_codes": completed_codes,
     }
 
 
@@ -201,6 +220,11 @@ def _build_prompt(ctx: dict) -> str:
     from app.ai.tool_executor import UNIVERSITY_DOMAINS
     domain = UNIVERSITY_DOMAINS.get(user.university, "")
 
+    # Allowed course list from the real catalog, excluding courses already taken /
+    # in progress / planned so the model only proposes NEW, real courses.
+    exclude_norm = {normalize_course_code(c) for c in all_existing_codes}
+    allowed_str = format_allowed_courses(ctx.get("catalog", {}), exclude=exclude_norm)
+
     return f"""You are an expert academic advisor at {user.university or 'a Canadian university'}.
 Your job is to create a semester-by-semester course plan for FUTURE semesters only.
 
@@ -213,8 +237,8 @@ CRITICAL RULES — YOU MUST FOLLOW ALL OF THESE:
 3. Do NOT recommend any course the student has already completed or is currently taking.
 4. EXISTING COURSE CODES — DO NOT INCLUDE ANY OF THESE (already completed, in progress, or planned): {taken_str}
 5. Maximum {MAX_COURSES_PER_SEMESTER} courses per semester (typically 4-5, around 12-15 credits). NEVER exceed {MAX_COURSES_PER_SEMESTER}. This is a HARD limit.
-6. Search the ACTUAL {user.university or 'university'} course catalog{f' at {domain}' if domain else ''} for real courses with correct course codes.
-7. Consider PREREQUISITES: don't schedule a course before its prerequisites are completed.
+6. Choose courses ONLY from the ALLOWED COURSES list below. Use these EXACT codes, names and credits. Do NOT invent course codes or recall courses from memory.
+7. Consider PREREQUISITES (shown as "prereqs:" in the list): don't schedule a course before its prerequisites are completed or scheduled in an EARLIER semester of this plan. A course with a "gate:" (GPA gate) requires the student's major GPA to reach that threshold first.
 8. Consider CAREER ALIGNMENT: prioritize courses that build skills for the student's career goals.
 9. For elective slots, recommend SPECIFIC courses that align with career goals, not just "Elective".{semester_exclusion_rules}
 
@@ -241,6 +265,9 @@ UNFILLED DEGREE REQUIREMENTS:
 {buckets_str}
 
 Overall progress: {summary['overall_percentage']}% — {summary['total_credits_completed']}/{summary['total_credits_required']} credits
+
+ALLOWED COURSES (choose ONLY from this list — exact codes/names/credits; "prereqs:" and "gate:" show what must be satisfied first):
+{allowed_str}
 
 Return a JSON object with this structure:
 {{
@@ -282,12 +309,39 @@ def _is_skipped_season(term: str, ctx: dict) -> bool:
     return False
 
 
+_SEASON_ORDER = {"winter": 0, "spring": 1, "summer": 2, "fall": 3}
+
+
+def _term_sort_key(term: str) -> tuple[int, int]:
+    parts = (term or "").strip().split()
+    season = _SEASON_ORDER.get(parts[0].lower(), 99) if parts else 99
+    year = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+    return (year, season)
+
+
 def _sanitize_plan(plan: dict, ctx: dict) -> dict:
-    """Post-process the AI plan to enforce hard constraints."""
+    """Post-process the AI plan to enforce hard constraints AND validate against
+    the real catalog:
+      - drop semesters in the past / opted-out seasons,
+      - drop any course code not in the catalog (fabricated codes never survive),
+      - overwrite name/credits from the authoritative catalog entry,
+      - plan-aware eligibility: a prereq scheduled in an EARLIER planned semester of
+        THIS plan counts as satisfied; GPA-gated courses stay flagged while the
+        student's actual major GPA is below the gate.
+    """
     all_existing_codes = ctx["all_codes"]  # all codes already in the DB
+    catalog = ctx.get("catalog", {})
+    gpa_by_scope = ctx.get("gpa_by_scope", {})
+    # Codes that count toward satisfying prereqs as we walk the plan forward:
+    # everything already completed, plus courses scheduled in earlier semesters.
+    scheduled_before = set(ctx.get("completed_codes", set()))
+
+    # Walk semesters in chronological order so plan-aware prereqs accumulate
+    # correctly even if the model emitted them out of order.
+    ordered = sorted(plan.get("semesters", []), key=lambda s: _term_sort_key(s.get("term", "")))
 
     cleaned_semesters = []
-    for sem in plan.get("semesters", []):
+    for sem in ordered:
         term = sem.get("term", "")
 
         # Drop semesters that are in the past or current
@@ -298,21 +352,43 @@ def _sanitize_plan(plan: dict, ctx: dict) -> dict:
         if _is_skipped_season(term, ctx):
             continue
 
-        # Filter out courses that already exist in the student's plan
         courses = []
+        this_semester_codes = []
         for course in sem.get("courses", []):
-            code = course.get("course_code", "")
-            if code in all_existing_codes:
-                course["already_in_plan"] = True
+            code = normalize_course_code(course.get("course_code", ""))
+            entry = catalog.get(code)
+            if entry is None:
+                # Fabricated / non-catalog code — drop it entirely.
+                continue
+
+            # Overwrite with authoritative catalog values.
+            course["course_code"] = code
+            course["course_name"] = entry["course_name"]
+            course["credits"] = entry["credits"]
+            course["already_in_plan"] = code in all_existing_codes
+
+            # Plan-aware eligibility: prereqs satisfied by completed OR
+            # earlier-scheduled courses; GPA gates stay blocked on actual GPA.
+            blocked_reason = evaluate_entry(
+                entry, scheduled_before, gpa_by_scope, plan_phrasing=True
+            )
+            if blocked_reason:
+                course["blocked_reason"] = blocked_reason
             else:
-                course["already_in_plan"] = False
+                course.pop("blocked_reason", None)
+
             courses.append(course)
+            this_semester_codes.append(code)
 
         # Enforce max courses per semester
         if len(courses) > MAX_COURSES_PER_SEMESTER:
             courses = courses[:MAX_COURSES_PER_SEMESTER]
+            this_semester_codes = this_semester_codes[:MAX_COURSES_PER_SEMESTER]
             sem.setdefault("semester_notes", "")
             sem["semester_notes"] += f" (Capped to {MAX_COURSES_PER_SEMESTER} courses)"
+
+        # Courses scheduled THIS semester unlock prereqs for LATER semesters only.
+        scheduled_before.update(this_semester_codes)
 
         if courses:
             sem["courses"] = courses
