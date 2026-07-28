@@ -15,6 +15,7 @@ from app.services.degree import get_degree_summary
 from app.services.document_parser import normalize_course_code
 from app.services.eligibility import (
     evaluate_entry,
+    expand_equivalents,
     format_allowed_courses,
     get_completed_codes,
     gpa_by_scope_for_catalog,
@@ -210,7 +211,11 @@ async def generate_recommendations(
     ctx = await _build_user_context(user_id, db)
 
     catalog = await get_catalog(ctx["university"], db, user_id)
-    existing_norm = {normalize_course_code(c) for c in ctx["existing_course_codes"]}
+    # Exclude courses the student already has AND anything equivalent to them
+    # (e.g. don't offer EECS 1015 to a student who completed its alternative 1012).
+    existing_norm = expand_equivalents(
+        {normalize_course_code(c) for c in ctx["existing_course_codes"]}
+    )
     allowed_str = format_allowed_courses(catalog, exclude=existing_norm)
 
     buckets_info = "\n".join(
@@ -293,7 +298,7 @@ Return ONLY valid JSON, no markdown fences, no extra text."""
     gpa_by_scope = await gpa_by_scope_for_catalog(catalog, user_id, db)
     completed_codes = await get_completed_codes(user_id, db)
 
-    saved = []
+    validated = []
     seen: set[str] = set()
     for rec_data in recommendations_data:
         code = normalize_course_code(rec_data.get("course_code", ""))
@@ -311,21 +316,38 @@ Return ONLY valid JSON, no markdown fences, no extra text."""
             prefix = f"⚠ BLOCKED — {blocked_reason}."
             prereq_notes = f"{prefix} {prereq_notes}".strip() if prereq_notes else prefix
 
+        # Correct an obvious bucket mislabel: EECS/MATH courses are never
+        # "Foundational Science Lab" credits (that bucket is wet-lab sciences only).
+        req_bucket = rec_data.get("requirement_bucket")
+        if (
+            entry.get("subject_faculty") in {"EECS", "MATH"}
+            and req_bucket
+            and "lab" in req_bucket.lower()
+        ):
+            req_bucket = "Major Requirements"
+
         rec = CourseRecommendation(
             user_id=user_id,
             semester=semester,
             course_code=code,
             course_name=entry["course_name"],
             credits=entry["credits"],
-            requirement_bucket=rec_data.get("requirement_bucket"),
+            requirement_bucket=req_bucket,
             reasoning=rec_data.get("reasoning"),
             career_relevance=rec_data.get("career_relevance"),
             prerequisite_notes=prereq_notes or None,
             priority=rec_data.get("priority", "medium"),
         )
-        db.add(rec)
-        saved.append(rec)
+        validated.append((blocked_reason is None, rec))
 
+    # Surface courses the student can actually take NOW first; within each group
+    # keep the model's high/medium/low ordering.
+    _prio_rank = {"high": 0, "medium": 1, "low": 2}
+    validated.sort(key=lambda t: (not t[0], _prio_rank.get(t[1].priority, 1)))
+
+    saved = [rec for _, rec in validated]
+    for rec in saved:
+        db.add(rec)
     await db.commit()
     for rec in saved:
         await db.refresh(rec)
