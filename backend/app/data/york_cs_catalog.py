@@ -77,16 +77,34 @@ YORK_CS_COURSES: list[dict] = [
      "credits": 3.0, "subject_faculty": "EECS",
      "prerequisites": [["SC/MATH 1090"], ["LE/EECS 2030"], ["LE/EECS 2031"], ["LE/EECS 2101"]],
      "gpa_gate": _EECS_GATE},
+    # NOTE: the 2025-2026 checklist lists these five courses' prerequisites only as
+    # "other specified courses" without naming them, so we do NOT invent an exact
+    # prereq list. We use a single CONSERVATIVE gateway prerequisite — Fundamentals
+    # of Data Structures (LE/EECS 2101) — which every 3000-level EECS course sits
+    # behind. This is a documented lower bound: enough to keep semester-plan ordering
+    # sane (they land after the 2000-level core) without over-claiming specifics.
     {"course_code": "LE/EECS 3215", "course_name": "Embedded Systems",
-     "credits": 4.0, "subject_faculty": "EECS", "prerequisites": [], "gpa_gate": _EECS_GATE},
+     "credits": 4.0, "subject_faculty": "EECS",
+     "prerequisites": [["LE/EECS 2101"]], "gpa_gate": _EECS_GATE},
     {"course_code": "LE/EECS 3221", "course_name": "Operating System Fundamentals",
-     "credits": 3.0, "subject_faculty": "EECS", "prerequisites": [], "gpa_gate": _EECS_GATE},
+     "credits": 3.0, "subject_faculty": "EECS",
+     "prerequisites": [["LE/EECS 2101"]], "gpa_gate": _EECS_GATE},
     {"course_code": "LE/EECS 3401", "course_name": "Introduction to Artificial Intelligence and Logic Programming",
-     "credits": 3.0, "subject_faculty": "EECS", "prerequisites": [], "gpa_gate": _EECS_GATE},
+     "credits": 3.0, "subject_faculty": "EECS",
+     "prerequisites": [["LE/EECS 2101"]], "gpa_gate": _EECS_GATE},
     {"course_code": "LE/EECS 3421", "course_name": "Introduction to Database Systems",
-     "credits": 3.0, "subject_faculty": "EECS", "prerequisites": [], "gpa_gate": _EECS_GATE},
+     "credits": 3.0, "subject_faculty": "EECS",
+     "prerequisites": [["LE/EECS 2101"]], "gpa_gate": _EECS_GATE},
     {"course_code": "LE/EECS 3461", "course_name": "User Interfaces",
-     "credits": 3.0, "subject_faculty": "EECS", "prerequisites": [], "gpa_gate": _EECS_GATE},
+     "credits": 3.0, "subject_faculty": "EECS",
+     "prerequisites": [["LE/EECS 2101"]], "gpa_gate": _EECS_GATE},
+]
+
+# Mutually-exclusive equivalent courses: completing ANY one member satisfies the
+# whole group, so the others must never be recommended/planned as if still needed.
+# From the checklist's first-year "A or B" alternatives.
+EQUIVALENT_GROUPS: list[set[str]] = [
+    {"LE/EECS 1012", "LE/EECS 1015"},  # net-centric intro  OR  CS-and-programming intro
 ]
 
 

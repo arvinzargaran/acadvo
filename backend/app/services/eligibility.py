@@ -18,9 +18,29 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.data.york_cs_catalog import EQUIVALENT_GROUPS
 from app.models.degree import Course, CourseStatus
 from app.services.degree import calculate_major_gpa
 from app.services.document_parser import normalize_course_code
+
+
+def equivalents_of(code: str) -> set[str]:
+    """Return ``code`` plus any courses it is mutually equivalent to (e.g. the
+    first-year intro alternatives). Completing any member satisfies them all."""
+    norm = normalize_course_code(code)
+    out = {norm}
+    for group in EQUIVALENT_GROUPS:
+        if norm in group:
+            out |= set(group)
+    return out
+
+
+def expand_equivalents(codes: set[str]) -> set[str]:
+    """Expand a set of codes with all their equivalents."""
+    out: set[str] = set()
+    for c in codes:
+        out |= equivalents_of(c)
+    return out
 
 
 async def get_completed_codes(user_id: uuid.UUID, db: AsyncSession) -> set[str]:
@@ -31,11 +51,13 @@ async def get_completed_codes(user_id: uuid.UUID, db: AsyncSession) -> set[str]:
             Course.status == CourseStatus.completed,
         )
     )
-    return {
+    completed = {
         normalize_course_code(c.course_code)
         for c in result.scalars()
         if c.course_code
     }
+    # A completed course also satisfies any course it's equivalent to.
+    return expand_equivalents(completed)
 
 
 def missing_prerequisite_group(

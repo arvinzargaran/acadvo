@@ -26,6 +26,7 @@ from app.services.degree import get_degree_summary
 from app.services.document_parser import normalize_course_code
 from app.services.eligibility import (
     evaluate_entry,
+    expand_equivalents,
     format_allowed_courses,
     gpa_by_scope_for_catalog,
 )
@@ -142,9 +143,11 @@ async def _gather_context(
     university = user.university or "York University"
     catalog = await get_catalog(university, db, user_id)
     gpa_by_scope = await gpa_by_scope_for_catalog(catalog, user_id, db)
-    completed_codes = {
-        normalize_course_code(c.course_code) for c in completed if c.course_code
-    }
+    # Equivalence-expanded so a completed course also counts as its alternatives
+    # (satisfies prereqs, and lets _sanitize_plan drop the redundant alternative).
+    completed_codes = expand_equivalents(
+        {normalize_course_code(c.course_code) for c in completed if c.course_code}
+    )
 
     return {
         "user": user,
@@ -334,7 +337,8 @@ def _sanitize_plan(plan: dict, ctx: dict) -> dict:
     gpa_by_scope = ctx.get("gpa_by_scope", {})
     # Codes that count toward satisfying prereqs as we walk the plan forward:
     # everything already completed, plus courses scheduled in earlier semesters.
-    scheduled_before = set(ctx.get("completed_codes", set()))
+    already_completed = set(ctx.get("completed_codes", set()))
+    scheduled_before = set(already_completed)
 
     # Walk semesters in chronological order so plan-aware prereqs accumulate
     # correctly even if the model emitted them out of order.
@@ -361,6 +365,9 @@ def _sanitize_plan(plan: dict, ctx: dict) -> dict:
             code = normalize_course_code(course.get("course_code", ""))
             if code in placed_codes or code in this_semester_codes:
                 # Already scheduled in an earlier semester or earlier in this one — no duplicates.
+                continue
+            if code in already_completed:
+                # Already completed (or an equivalent alternative is) — don't re-plan it.
                 continue
             entry = catalog.get(code)
             if entry is None and catalog:
