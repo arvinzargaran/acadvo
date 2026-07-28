@@ -10,7 +10,7 @@ These lock in the follow-up fixes:
 All hermetic — no DB, no network.
 """
 from app.services.eligibility import equivalents_of, expand_equivalents
-from app.services.semester_plan import _sanitize_plan
+from app.services.semester_plan import _sanitize_plan, _pad_plan_to_target
 
 
 def test_equivalents_of_first_year_intro():
@@ -93,3 +93,53 @@ def test_sanitize_plan_flags_course_before_gateway_prereq(monkeypatch):
     by_code = {c["course_code"]: c for s in cleaned["semesters"] for c in s["courses"]}
     assert "blocked_reason" not in by_code["LE/EECS 2101"]  # prereq 2030 done
     assert "2101" in by_code["LE/EECS 3221"].get("blocked_reason", "")  # needs 2101 first
+
+
+def test_sanitize_plan_defers_course_to_after_its_prereq(monkeypatch):
+    from datetime import date
+
+    class MockDate:
+        @classmethod
+        def today(cls):
+            return date(2026, 2, 15)  # Winter 2026 current
+
+    monkeypatch.setattr("app.services.semester_plan.date", MockDate)
+
+    ctx = {
+        "all_codes": set(),
+        "catalog": _catalog(),
+        "gpa_by_scope": {},
+        "completed_codes": {"LE/EECS 2030"},  # 2101's prereq done
+        "skip_summers": True,
+    }
+    # 3221 (needs 2101) is co-scheduled with 2101 in Fall 2026; there's a later term.
+    plan = {"semesters": [
+        {"term": "Fall 2026", "courses": [{"course_code": "LE/EECS 2101"}, {"course_code": "LE/EECS 3221"}]},
+        {"term": "Winter 2027", "courses": []},
+    ]}
+
+    cleaned = _sanitize_plan(plan, ctx)
+    by_term = {s["term"]: [c["course_code"] for c in s["courses"]] for s in cleaned["semesters"]}
+    assert by_term.get("Fall 2026") == ["LE/EECS 2101"]
+    assert "LE/EECS 3221" in by_term.get("Winter 2027", [])  # deferred to AFTER its prereq
+    # And now unblocked, since 2101 sits in an earlier semester
+    win = {c["course_code"]: c for s in cleaned["semesters"] if s["term"] == "Winter 2027" for c in s["courses"]}
+    assert "blocked_reason" not in win["LE/EECS 3221"]
+
+
+def test_pad_plan_to_target_fills_electives():
+    ctx = {
+        "summary": {"total_credits_required": 120.0, "total_credits_completed": 30.0},
+        "planned": [],
+        "in_progress": [],
+    }
+    # Plan has 9 credits scheduled; 30 completed => 81 credits short of 120 -> pad.
+    plan = {"semesters": [
+        {"term": "Fall 2026", "courses": [{"course_code": "LE/EECS 2030", "credits": 3.0}]},
+        {"term": "Winter 2027", "courses": []},
+    ]}
+    padded = _pad_plan_to_target(plan, ctx)
+    placeholders = [c for s in padded["semesters"] for c in s["courses"] if c.get("is_placeholder")]
+    assert placeholders, "expected elective placeholders to be added"
+    # Never exceeds the per-semester cap.
+    assert all(len(s["courses"]) <= 5 for s in padded["semesters"])
