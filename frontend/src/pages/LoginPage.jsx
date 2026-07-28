@@ -36,7 +36,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center px-4 bg-dark-950">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold font-display text-primary-600">Acadvo</h1>
+          <Link to="/" className="inline-block text-3xl font-bold font-display text-primary-600 hover:opacity-80 transition-opacity">Acadvo</Link>
           <p className="text-gray-400 mt-1">Sign in to your account</p>
         </div>
 
@@ -83,6 +83,12 @@ export default function LoginPage() {
               Register
             </Link>
           </p>
+        </div>
+
+        <div className="mt-6 text-center">
+          <Link to="/" className="text-sm text-gray-500 hover:text-gray-300 transition-colors">
+            ← Back to home
+          </Link>
         </div>
       </div>
     </div>
