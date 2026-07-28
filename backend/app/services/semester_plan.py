@@ -29,6 +29,7 @@ from app.services.eligibility import (
     expand_equivalents,
     format_allowed_courses,
     gpa_by_scope_for_catalog,
+    missing_prerequisite_group,
 )
 
 MAX_COURSES_PER_SEMESTER = 5
@@ -322,70 +323,106 @@ def _term_sort_key(term: str) -> tuple[int, int]:
     return (year, season)
 
 
+def _prepare_course(
+    course: dict,
+    *,
+    catalog: dict,
+    all_existing_codes: set,
+    already_completed: set,
+    placed_codes: set,
+    this_codes: list,
+) -> tuple[str, dict | None] | None:
+    """Canonicalize + validate a single course dict IN PLACE. Returns ``(code, entry)``
+    to keep it, or ``None`` to drop it (empty/duplicate/already-completed/fabricated).
+
+    ``entry`` is the authoritative catalog record (``None`` when the catalog is
+    unavailable — we then fail OPEN and keep the model's course as-is)."""
+    code = normalize_course_code(course.get("course_code", ""))
+    if not code or code in placed_codes or code in this_codes or code in already_completed:
+        return None
+    entry = catalog.get(code)
+    if entry is None and catalog:
+        # Catalog loaded but this code isn't in it → fabricated; drop it.
+        return None
+    course["course_code"] = code
+    if entry is not None:
+        course["course_name"] = entry["course_name"]
+        course["credits"] = entry["credits"]
+    course["already_in_plan"] = code in all_existing_codes
+    return code, entry
+
+
 def _sanitize_plan(plan: dict, ctx: dict) -> dict:
     """Post-process the AI plan to enforce hard constraints AND validate against
     the real catalog:
       - drop semesters in the past / opted-out seasons,
       - drop any course code not in the catalog (fabricated codes never survive),
+      - drop courses already completed (or an equivalent of),
       - overwrite name/credits from the authoritative catalog entry,
-      - plan-aware eligibility: a prereq scheduled in an EARLIER planned semester of
-        THIS plan counts as satisfied; GPA-gated courses stay flagged while the
-        student's actual major GPA is below the gate.
+      - DEFER a course whose prerequisite is only met later: rather than flagging a
+        course co-scheduled with its own prereq, carry it forward to a subsequent
+        semester where the prereq is already satisfied. GPA-gated courses are NOT
+        deferred (rescheduling can't change the student's current GPA) — they stay
+        flagged. Courses that can't be placed within the timeline surface a warning.
     """
-    all_existing_codes = ctx["all_codes"]  # all codes already in the DB
+    all_existing_codes = ctx["all_codes"]
     catalog = ctx.get("catalog", {})
     gpa_by_scope = ctx.get("gpa_by_scope", {})
-    # Codes that count toward satisfying prereqs as we walk the plan forward:
-    # everything already completed, plus courses scheduled in earlier semesters.
     already_completed = set(ctx.get("completed_codes", set()))
     scheduled_before = set(already_completed)
 
-    # Walk semesters in chronological order so plan-aware prereqs accumulate
-    # correctly even if the model emitted them out of order.
-    ordered = sorted(plan.get("semesters", []), key=lambda s: _term_sort_key(s.get("term", "")))
+    kept = [
+        sem
+        for sem in sorted(plan.get("semesters", []), key=lambda s: _term_sort_key(s.get("term", "")))
+        if not _semester_is_past_or_current(sem.get("term", ""))
+        and not _is_skipped_season(sem.get("term", ""), ctx)
+    ]
 
-    # Track codes already placed anywhere in THIS plan so the same course can't be
-    # scheduled in two different semesters.
     placed_codes: set[str] = set()
+    deferred: list[dict] = []          # courses waiting for a prereq scheduled later
+    dropped_overflow: list[str] = []   # courses dropped for lack of room
     cleaned_semesters = []
-    for sem in ordered:
-        term = sem.get("term", "")
 
-        # Drop semesters that are in the past or current
-        if _semester_is_past_or_current(term):
-            continue
+    for idx, sem in enumerate(kept):
+        is_last = idx == len(kept) - 1
+        pool = deferred + list(sem.get("courses", []))
+        deferred = []
+        courses: list[dict] = []
+        this_codes: list[str] = []
+        capped = False
 
-        # Drop semesters the user opted out of
-        if _is_skipped_season(term, ctx):
-            continue
-
-        courses = []
-        this_semester_codes = []
-        for course in sem.get("courses", []):
-            code = normalize_course_code(course.get("course_code", ""))
-            if code in placed_codes or code in this_semester_codes:
-                # Already scheduled in an earlier semester or earlier in this one — no duplicates.
+        for course in pool:
+            prepared = _prepare_course(
+                course,
+                catalog=catalog,
+                all_existing_codes=all_existing_codes,
+                already_completed=already_completed,
+                placed_codes=placed_codes,
+                this_codes=this_codes,
+            )
+            if prepared is None:
                 continue
-            if code in already_completed:
-                # Already completed (or an equivalent alternative is) — don't re-plan it.
-                continue
-            entry = catalog.get(code)
-            if entry is None and catalog:
-                # Catalog is loaded but this code isn't in it → fabricated; drop it.
-                # (When the catalog is empty/unavailable we fail OPEN below rather
-                # than nuking the whole plan.)
+            code, entry = prepared
+
+            # Defer a course whose prerequisite is missing NOW but could be met in a
+            # later semester (only when this isn't the final semester).
+            if entry is not None and not is_last:
+                if missing_prerequisite_group(entry.get("prerequisites"), scheduled_before):
+                    deferred.append(course)
+                    continue
+
+            # Capacity: carry overflow forward, or drop on the last semester (matches
+            # the historical hard cap so nothing balloons past MAX_COURSES).
+            if len(courses) >= MAX_COURSES_PER_SEMESTER:
+                capped = True
+                if is_last:
+                    dropped_overflow.append(code)
+                else:
+                    deferred.append(course)
                 continue
 
-            course["course_code"] = code
-            if entry is not None:
-                # Overwrite with authoritative catalog values.
-                course["course_name"] = entry["course_name"]
-                course["credits"] = entry["credits"]
-            course["already_in_plan"] = code in all_existing_codes
-
-            # Plan-aware eligibility: prereqs satisfied by completed OR
-            # earlier-scheduled courses; GPA gates stay blocked on actual GPA.
-            # Only enforceable when we have a catalog entry to read prereqs/gate from.
+            # Flag any remaining eligibility issue (GPA gate, or an unmet prereq on the
+            # final semester where we can no longer defer).
             if entry is not None:
                 blocked_reason = evaluate_entry(
                     entry, scheduled_before, gpa_by_scope, plan_phrasing=True
@@ -396,26 +433,124 @@ def _sanitize_plan(plan: dict, ctx: dict) -> dict:
                     course.pop("blocked_reason", None)
 
             courses.append(course)
-            this_semester_codes.append(code)
+            this_codes.append(code)
 
-        # Enforce max courses per semester
-        if len(courses) > MAX_COURSES_PER_SEMESTER:
-            courses = courses[:MAX_COURSES_PER_SEMESTER]
-            this_semester_codes = this_semester_codes[:MAX_COURSES_PER_SEMESTER]
-            sem.setdefault("semester_notes", "")
-            sem["semester_notes"] += f" (Capped to {MAX_COURSES_PER_SEMESTER} courses)"
+        if capped:
+            sem["semester_notes"] = (sem.get("semester_notes") or "") + f" (Capped to {MAX_COURSES_PER_SEMESTER} courses)"
 
-        # Courses scheduled THIS semester unlock prereqs for LATER semesters only,
-        # and are recorded so they can't be duplicated in a later semester.
-        scheduled_before.update(this_semester_codes)
-        placed_codes.update(this_semester_codes)
-
+        scheduled_before.update(this_codes)
+        placed_codes.update(this_codes)
         if courses:
             sem["courses"] = courses
             cleaned_semesters.append(sem)
 
     plan["semesters"] = cleaned_semesters
+
+    stuck = sorted({normalize_course_code(c.get("course_code", "")) for c in deferred} | set(dropped_overflow))
+    stuck = [c for c in stuck if c]
+    if stuck:
+        plan.setdefault("warnings", []).append(
+            "Not enough room in the planned semesters for: "
+            + ", ".join(stuck)
+            + ". Consider adding Summer terms or an extra year."
+        )
     return plan
+
+
+def _pad_plan_to_target(plan: dict, ctx: dict) -> dict:
+    """Fill spare capacity in the planned semesters with elective placeholders so the
+    plan trends toward the degree credit total (York CS honours = 120). Only fills
+    EXISTING future semesters (never invents terms past graduation); if the target
+    still isn't reachable, adds a warning instead of over-scheduling."""
+    summary = ctx.get("summary") or {}
+    target = float(summary.get("total_credits_required") or 120.0)
+    completed_credits = float(summary.get("total_credits_completed") or 0.0)
+
+    semesters = plan.get("semesters", [])
+    plan_codes = {
+        normalize_course_code(c.get("course_code", ""))
+        for s in semesters
+        for c in s.get("courses", [])
+    }
+    # Projected credits = completed + everything in the plan + existing planned/in-progress
+    # courses the plan didn't re-list.
+    plan_credits = sum(float(c.get("credits", 0) or 0) for s in semesters for c in s.get("courses", []))
+    extra_existing = sum(
+        float(c.credit_value)
+        for c in list(ctx.get("planned", [])) + list(ctx.get("in_progress", []))
+        if normalize_course_code(c.course_code) not in plan_codes
+    )
+    gap = target - (completed_credits + plan_credits + extra_existing)
+    if gap < 3:
+        return plan
+
+    needed = int(gap // 3)
+    added = 0
+    for sem in semesters:
+        while len(sem.get("courses", [])) < MAX_COURSES_PER_SEMESTER and added < needed:
+            sem.setdefault("courses", []).append({
+                "course_code": "ELECTIVE",
+                "course_name": "Elective (your choice — toward the 120-credit total)",
+                "credits": 3.0,
+                "requirement_bucket": "Electives",
+                "reasoning": "Fills remaining elective credits required to reach the degree total.",
+                "prerequisites": "None",
+                "already_in_plan": False,
+                "is_placeholder": True,
+            })
+            added += 1
+
+    if added < needed:
+        remaining = (needed - added) * 3
+        plan.setdefault("warnings", []).append(
+            f"About {remaining:.0f} more elective credits are needed to reach {target:.0f} "
+            "beyond the scheduled semesters — consider Summer terms or an extra year."
+        )
+    return plan
+
+
+def _stream_prepare_semester(
+    sem: dict, ctx: dict, scheduled_accum: set, placed_accum: set
+) -> bool:
+    """Validate one STREAMED semester in place: drop fabricated / already-completed /
+    duplicate courses, overwrite name/credits from the catalog, cap, and flag
+    eligibility against the courses accumulated so far. Returns True if any course
+    remains. (Streaming emits semesters as they arrive, so it can't defer across
+    not-yet-seen terms — it flags rather than reorders.)"""
+    catalog = ctx.get("catalog", {})
+    gpa_by_scope = ctx.get("gpa_by_scope", {})
+    all_existing = ctx["all_codes"]
+    already_completed = set(ctx.get("completed_codes", set()))
+
+    kept: list[dict] = []
+    this_codes: list[str] = []
+    for course in sem.get("courses", []):
+        if len(kept) >= MAX_COURSES_PER_SEMESTER:
+            break
+        prepared = _prepare_course(
+            course,
+            catalog=catalog,
+            all_existing_codes=all_existing,
+            already_completed=already_completed,
+            placed_codes=placed_accum,
+            this_codes=this_codes,
+        )
+        if prepared is None:
+            continue
+        _code, entry = prepared
+        if entry is not None:
+            blocked_reason = evaluate_entry(entry, scheduled_accum, gpa_by_scope, plan_phrasing=True)
+            if blocked_reason:
+                course["blocked_reason"] = blocked_reason
+            else:
+                course.pop("blocked_reason", None)
+        kept.append(course)
+        this_codes.append(_code)
+
+    sem["courses"] = kept
+    scheduled_accum.update(this_codes)
+    placed_accum.update(this_codes)
+    return bool(kept)
 
 
 async def generate_semester_plan(
@@ -448,8 +583,10 @@ async def generate_semester_plan(
             "warnings": [text[:500]],
         }
 
-    # Hard-enforce constraints the AI may have violated
+    # Hard-enforce constraints the AI may have violated, then top up toward the
+    # degree credit total with elective placeholders.
     plan = _sanitize_plan(plan, ctx)
+    plan = _pad_plan_to_target(plan, ctx)
 
     return plan
 
@@ -603,6 +740,10 @@ async def generate_semester_plan_stream(
         accumulated = ""
         summary_sent = False
         semesters_sent = 0
+        # Accumulators for per-semester catalog validation + eligibility flagging,
+        # mirroring _sanitize_plan for the non-streaming path.
+        scheduled_accum = set(ctx.get("completed_codes", set()))
+        placed_accum: set[str] = set()
 
         for chunk in stream:
             delta = chunk.choices[0].delta.content
@@ -621,21 +762,18 @@ async def generate_semester_plan_stream(
             _, parsed_semesters = _try_parse_partial_semesters(accumulated)
             while semesters_sent < len(parsed_semesters):
                 sem = parsed_semesters[semesters_sent]
-                # Sanitize this semester
                 term = sem.get("term", "")
                 if _semester_is_past_or_current(term) or _is_skipped_season(term, ctx):
                     semesters_sent += 1
                     continue
-                # Mark already_in_plan
-                for course in sem.get("courses", []):
-                    code = course.get("course_code", "")
-                    course["already_in_plan"] = code in ctx["all_codes"]
-                # Cap courses
-                if len(sem.get("courses", [])) > MAX_COURSES_PER_SEMESTER:
-                    sem["courses"] = sem["courses"][:MAX_COURSES_PER_SEMESTER]
-
-                yield f"data: {json.dumps({'type': 'semester', 'semester': sem, 'index': semesters_sent})}\n\n"
+                # Validate against the catalog (drop fabricated/completed/dupes,
+                # overwrite name/credits, flag eligibility). Skip emitting if empty.
+                has_courses = _stream_prepare_semester(sem, ctx, scheduled_accum, placed_accum)
                 semesters_sent += 1
+                if not has_courses:
+                    continue
+
+                yield f"data: {json.dumps({'type': 'semester', 'semester': sem, 'index': semesters_sent - 1})}\n\n"
 
             # Yield control to event loop so SSE events flush
             await asyncio.sleep(0)
@@ -657,11 +795,8 @@ async def generate_semester_plan_stream(
                     term = sem.get("term", "")
                     if _semester_is_past_or_current(term) or _is_skipped_season(term, ctx):
                         continue
-                    for course in sem.get("courses", []):
-                        code = course.get("course_code", "")
-                        course["already_in_plan"] = code in ctx["all_codes"]
-                    if len(sem.get("courses", [])) > MAX_COURSES_PER_SEMESTER:
-                        sem["courses"] = sem["courses"][:MAX_COURSES_PER_SEMESTER]
+                    if not _stream_prepare_semester(sem, ctx, scheduled_accum, placed_accum):
+                        continue
                     yield f"data: {json.dumps({'type': 'semester', 'semester': sem, 'index': i})}\n\n"
 
                 # Send warnings
