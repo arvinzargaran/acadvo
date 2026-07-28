@@ -56,7 +56,7 @@ export default function FolioRail({ items = [], hidden = false }) {
   return (
     <nav
       aria-label="Section index"
-      className={`fixed left-6 xl:left-8 top-1/2 -translate-y-1/2 z-40 hidden lg:flex flex-col gap-3 pointer-events-none transition-opacity duration-500 ${
+      className={`fixed left-6 xl:left-8 top-1/2 -translate-y-1/2 z-40 hidden 2xl:flex flex-col gap-3 pointer-events-none transition-opacity duration-500 ${
         hidden ? 'opacity-0 invisible' : 'opacity-100'
       }`}
     >
