@@ -51,7 +51,7 @@ export default function RegisterPage() {
     <div className="min-h-screen flex items-center justify-center px-4 bg-dark-950">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold font-display text-primary-600">Acadvo</h1>
+          <Link to="/" className="inline-block text-2xl font-bold font-display text-primary-600 hover:opacity-80 transition-opacity">Acadvo</Link>
           <p className="text-gray-400 mt-1">Create your account</p>
         </div>
 
@@ -127,6 +127,12 @@ export default function RegisterPage() {
               Sign in
             </Link>
           </p>
+        </div>
+
+        <div className="mt-6 text-center">
+          <Link to="/" className="text-sm text-gray-500 hover:text-gray-300 transition-colors">
+            ← Back to home
+          </Link>
         </div>
       </div>
     </div>

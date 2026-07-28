@@ -21,7 +21,6 @@ import ComparisonStrip from '../components/landing/ComparisonStrip';
 import Testimonials from '../components/landing/Testimonials';
 import FAQ from '../components/landing/FAQ';
 import PlanBuilder from '../components/landing/PlanBuilder';
-import RippleWake from '../components/landing/RippleWake';
 import FolioRail from '../components/landing/FolioRail';
 import ThemeToggle from '../components/landing/ThemeToggle';
 import TiltCard from '../components/landing/TiltCard';
@@ -1151,7 +1150,7 @@ function Footer({ user }) {
         transition={{ duration: 0.9, ease }}
         className="max-w-7xl mx-auto"
       >
-        <div className="font-display font-bold text-primary-600 leading-[0.82] tracking-tight text-center text-[clamp(3rem,10vw,7.5rem)] select-none -mb-2 md:-mb-4">
+        <div className="font-display font-bold text-primary-600 leading-[0.82] tracking-tight text-center text-[clamp(2rem,6vw,4rem)] select-none -mb-1 md:-mb-2">
           acadvo
         </div>
       </motion.div>
@@ -1216,14 +1215,13 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-dark-950 text-dark-50 overflow-x-hidden">
       <div className="grain-overlay" aria-hidden="true" />
-      <RippleWake />
       <ScrollProgress />
       <FolioRail items={FOLIO_ITEMS} hidden={spotlightActive} />
       <Navbar user={user} />
 
       {/* ── Hero ── */}
       <section
-        className="relative min-h-screen flex flex-col items-center justify-center pt-24 overflow-hidden"
+        className="relative min-h-screen flex flex-col items-center justify-center pt-32 md:pt-48 overflow-hidden"
       >
         {/* Layered background: animated warm mesh + ruled grid for depth */}
         <HeroMesh />
@@ -1235,7 +1233,7 @@ export default function LandingPage() {
           className="relative z-10 flex flex-col items-center text-center px-6 max-w-5xl mx-auto"
         >
           {/* Headline — masked word-by-word reveal */}
-          <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.08] mb-6">
+          <h1 className="text-5xl/[1.22] md:text-6xl/[1.22] lg:text-7xl/[1.22] font-bold tracking-tight mb-6">
             <SplitWords text="Graduate on time." className="block" delay={0.1} />
             <SplitWords text="Land the internship." className="block" delay={0.28} />
             <SplitWords

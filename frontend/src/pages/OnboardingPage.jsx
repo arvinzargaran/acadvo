@@ -416,7 +416,7 @@ export default function OnboardingPage() {
           onClick={async () => {
             if (!window.confirm('Leave setup? Your progress on this page will be lost.')) return;
             await logout();
-            navigate('/login');
+            navigate('/');
           }}
           className="flex items-center gap-1.5 text-dark-500 hover:text-white text-sm transition-colors"
         >

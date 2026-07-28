@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -17,8 +17,14 @@ const pageTitles = {
 
 export default function Topbar({ onMenuToggle }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
+  };
 
   const title = pageTitles[location.pathname] || 'Acadvo';
 
@@ -57,7 +63,7 @@ export default function Topbar({ onMenuToggle }) {
         </button>
         <span className="text-sm text-gray-600 dark:text-dark-300 hidden sm:inline">{user?.full_name}</span>
         <button
-          onClick={logout}
+          onClick={handleLogout}
           className="text-sm text-gray-500 dark:text-dark-400 hover:text-gray-900 dark:hover:text-white transition-colors"
         >
           Logout
