@@ -358,3 +358,19 @@ def build_grade_map(scale: dict) -> dict[str, float]:
     for g in scale["grades"]:
         mapping[g["letter"].upper()] = g["points"]
     return mapping
+
+
+def map_percent_to_grade(scale: dict, percent: float) -> tuple[str | None, float | None]:
+    """Map a percentage (0-100) to a (letter, gpa_points) pair using the scale's
+    percentage boundaries. Returns (None, None) if the scale lacks ``min_percent``
+    boundaries (degrade gracefully rather than guess)."""
+    grades = scale.get("grades", [])
+    if not grades or any("min_percent" not in g for g in grades):
+        return None, None
+    # Highest min_percent that the percentage still clears wins.
+    for g in sorted(grades, key=lambda g: g["min_percent"], reverse=True):
+        if percent >= g["min_percent"]:
+            return g["letter"], g["points"]
+    # Below every boundary — fall back to the lowest grade.
+    lowest = min(grades, key=lambda g: g["min_percent"])
+    return lowest["letter"], lowest["points"]

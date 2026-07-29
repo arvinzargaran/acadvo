@@ -82,6 +82,7 @@ class Assessment(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     weight: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    score: Mapped[float | None] = mapped_column(Float)  # percent (0-100) the student earned, null until graded
     category: Mapped[AssessmentCategory] = mapped_column(Enum(AssessmentCategory, name="assessment_category"), nullable=False, default=AssessmentCategory.other)
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)

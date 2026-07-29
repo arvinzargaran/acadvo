@@ -1,7 +1,7 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 
 logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,8 +11,11 @@ from app.deps import get_current_user
 from app.limiter import limiter
 from app.models.user import User
 from app.schemas.degree import (
+    AssessmentCreate,
     AssessmentResponse,
+    AssessmentUpdate,
     CourseCreate,
+    CourseGradeProjection,
     CourseResponse,
     CourseUpdate,
     CredentialCreate,
@@ -22,7 +25,9 @@ from app.schemas.degree import (
     DegreeRequirementResponse,
     DegreeRequirementUpdate,
     DegreeSummaryResponse,
+    GPAGoalResponse,
     GPAResponse,
+    MajorGPAGoalResponse,
     ParsedDegreeDocument,
 )
 from app.services import degree as degree_service
@@ -90,6 +95,31 @@ async def get_gpa(
     db: AsyncSession = Depends(get_db),
 ):
     return await degree_service.calculate_gpa(current_user.id, db)
+
+
+@router.get("/gpa/goal", response_model=GPAGoalResponse)
+async def gpa_goal(
+    target: float = Query(..., ge=0, description="Desired cumulative GPA"),
+    remaining_credits: float = Query(..., description="Credits still to be taken"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await degree_service.project_gpa_goal(
+        current_user.id, db, target, remaining_credits
+    )
+
+
+@router.get("/gpa/goal/major", response_model=MajorGPAGoalResponse)
+async def gpa_goal_major(
+    remaining_credits: float = Query(..., description="Major credits still to be taken"),
+    scope: str = Query("EECS", description="Faculty/subject prefix, e.g. EECS"),
+    gate: float = Query(4.50, ge=0, description="Program major-GPA gate threshold"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await degree_service.project_major_gpa_goal(
+        current_user.id, db, remaining_credits, faculty_prefix=scope, gate=gate
+    )
 
 
 # ── Summary ──────────────────────────────────────────────────────────
@@ -178,6 +208,45 @@ async def list_assessments(
     db: AsyncSession = Depends(get_db),
 ):
     return await degree_service.list_assessments(course_id, current_user.id, db)
+
+
+@router.post("/courses/{course_id}/assessments", response_model=AssessmentResponse, status_code=201)
+async def create_assessment(
+    course_id: uuid.UUID,
+    data: AssessmentCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await degree_service.create_assessment(course_id, current_user.id, data, db)
+
+
+@router.put("/assessments/{assessment_id}", response_model=AssessmentResponse)
+async def update_assessment(
+    assessment_id: uuid.UUID,
+    data: AssessmentUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await degree_service.update_assessment(assessment_id, current_user.id, data, db)
+
+
+@router.delete("/assessments/{assessment_id}", status_code=204)
+async def delete_assessment(
+    assessment_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await degree_service.delete_assessment(assessment_id, current_user.id, db)
+
+
+@router.get("/courses/{course_id}/grade-projection", response_model=CourseGradeProjection)
+async def grade_projection(
+    course_id: uuid.UUID,
+    target: float | None = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await degree_service.project_course_grade(course_id, current_user.id, db, target=target)
 
 
 @router.post("/courses/{course_id}/parse-syllabus", response_model=list[AssessmentResponse])

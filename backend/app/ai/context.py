@@ -10,7 +10,8 @@ from app.models.degree import DegreeRequirement, Course, CourseStatus
 from app.models.project import Project, ProjectStatus, MilestoneStatus
 from app.models.career import CareerTarget, TimelineEvent
 from app.models.suggestion import AISuggestion
-from app.services.catalog import get_catalog
+from app.data.program_config import get_major_gpa_gates
+from app.services.catalog import get_catalog, has_seeded_catalog
 from app.services.degree import _is_constraint_bucket, calculate_gpa
 from app.services.document_parser import normalize_course_code
 from app.services.eligibility import format_prereqs
@@ -61,9 +62,13 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
     timeline_events = timeline_result.scalars().all()
 
     # GPA (cumulative + major GPAs with gate status) and the real course catalog,
-    # so we can surface prerequisites and GPA gates the AI must respect.
+    # so we can surface prerequisites and GPA gates the AI must respect. We ground
+    # on the student's ACTUAL university — never silently substitute York's catalog
+    # for a student who set no university — and track whether that university has a
+    # verified (seeded) catalog so the AI can be honest about best-effort advising.
     gpa_data = await calculate_gpa(user_id, db)
-    catalog = await get_catalog(user.university or "York University", db, user_id)
+    catalog = await get_catalog(user.university or "", db, user_id)
+    catalog_verified = await has_seeded_catalog(user.university, db)
 
     # Build the prompt
     sections = []
@@ -176,15 +181,16 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
         for mg in gpa_data.get("major_gpas", []):
             scope = mg.get("scope", "")
             gpa_val = mg.get("gpa")
+            gate_val = float(mg.get("gate", 4.5))
             if gpa_val is None:
                 continue
             if mg.get("meets_gate"):
                 gpa_lines.append(
-                    f"{scope} major GPA: {gpa_val} (meets the 4.50 gate for 2000+ {scope} courses)"
+                    f"{scope} major GPA: {gpa_val} (meets the {gate_val:.2f} {scope}-major gate)"
                 )
             else:
                 gpa_lines.append(
-                    f"{scope} major GPA: {gpa_val} (BELOW the 4.50 gate required for 2000+ {scope} courses)"
+                    f"{scope} major GPA: {gpa_val} (BELOW the {gate_val:.2f} {scope}-major gate)"
                 )
         for i, line in enumerate(gpa_lines):
             degree_lines.insert(5 + i, line)
@@ -285,6 +291,45 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
 
         sections.append("\n".join(timeline_lines))
 
+    # Catalog-grounding rule — verified vs best-effort — so the AI is honest about
+    # what it actually knows for this student's university.
+    if catalog_verified:
+        catalog_rule = (
+            f"COURSE CATALOG: You have a VERIFIED, seeded catalog for {user.university}. Rely on the "
+            "prerequisites and GPA gates listed in DEGREE PROGRESS above. Do NOT invent course codes, "
+            "prerequisites, or gates beyond what is listed there or what the student has recorded."
+        )
+    else:
+        uni = user.university or "this student's university"
+        catalog_rule = (
+            f"COURSE CATALOG: There is NO verified catalog for {uni}. You must NOT assert or invent "
+            "prerequisites, course eligibility, GPA gates, or specific course codes for it. Ground every "
+            "recommendation ONLY in the student's own recorded courses and requirements, and clearly frame "
+            "any course suggestion as best-effort that the student must confirm against their official "
+            "academic calendar."
+        )
+
+    # GPA-gate rule — describe the student's ACTUAL configured gates, not York's.
+    gates = get_major_gpa_gates(user.university)
+    if gates:
+        gate_descs = "; ".join(
+            f"a {g['min']:.2f} {g['scope']}-major GPA for {g['governs']}" for g in gates
+        )
+        gate_rule = (
+            f"GPA GATES (HARD RULES — DO NOT VIOLATE): {user.university} gates {gate_descs}. NEVER tell a "
+            "student they are eligible for, or add, a course whose prerequisites are unmet or whose GPA gate "
+            "they do not meet. Check the student's completed courses, their major GPA (shown above), and each "
+            "course's prerequisites BEFORE recommending or adding it. If a course is out of reach, say so "
+            "plainly and explain what must happen first (finish a prereq, or raise the major GPA to the gate)."
+        )
+    else:
+        gate_rule = (
+            "PREREQUISITES (HARD RULE — DO NOT VIOLATE): NEVER tell a student they are eligible for, or add, a "
+            "course whose prerequisites are unmet. Check the student's completed courses and each course's "
+            "prerequisites BEFORE recommending or adding it. This student's program has no configured "
+            "major-GPA gate — do not invent one."
+        )
+
     # Instructions
     sections.append(f"""
 {'=' * 50}
@@ -292,8 +337,9 @@ INSTRUCTIONS
 {'=' * 50}
 You have tools to read and write to this student's data. Use write tools ONLY when the student explicitly asks to change their plan (add/drop a course, create a project, update a status). For questions about status, eligibility, GPA, or "can I take X" — ANSWER from the context above; do NOT call write tools. Never add or mark a course the student has not asked you to change, and never add a course whose prerequisites are unmet or whose GPA gate they fail.
 
-PREREQUISITES & GPA GATES (HARD RULES — DO NOT VIOLATE):
-York gates most 2000/3000/4000-level EECS courses behind a 4.50 EECS-major GPA AND hard prerequisites. NEVER tell a student they are eligible for, or add, a course whose prerequisites are unmet or whose GPA gate they do not meet. Check the student's completed courses, their major GPA (shown above), and each course's prerequisites BEFORE recommending or adding it. If a course is out of reach, say so plainly and explain what must happen first (finish a prereq, or raise the major GPA to the gate).
+{catalog_rule}
+
+{gate_rule}
 
 When giving advice:
 - Be specific, not generic. Reference their actual courses, projects, and deadlines.
