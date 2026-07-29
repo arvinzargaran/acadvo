@@ -7,6 +7,7 @@ import ExportPDF from '../components/degree/ExportPDF';
 import FileUploadZone from '../components/degree/FileUploadZone';
 import ParsedDataReview from '../components/degree/ParsedDataReview';
 import CredentialsSection from '../components/degree/CredentialsSection';
+import CatalogStatus from '../components/degree/CatalogStatus';
 import RequirementForm from '../components/degree/RequirementForm';
 import GPACalculator from '../components/dashboard/GPACalculator';
 import GPATrendGoal from '../components/degree/GPATrendGoal';
@@ -241,6 +242,8 @@ export default function DegreePage() {
           {/* Chat widget available in bottom-right corner */}
         </div>
       </div>
+
+      <CatalogStatus />
 
       {summary && (
         <div className="bg-dark-800 border border-dark-700 rounded-xl p-4">

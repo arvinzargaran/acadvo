@@ -142,6 +142,22 @@ class ParsedDegreeDocument(BaseModel):
     courses: list[ParsedCourse]
 
 
+# ── Catalog Status ───────────────────────────────────────────────────
+
+class CatalogStatusResponse(BaseModel):
+    """Whether AI advising for the user's university is grounded in a verified,
+    seeded course catalog (``verified``) or running best-effort off the student's
+    own uploaded courses. Powers the "Verified vs best-effort" badge in the UI."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    university: str | None = None
+    verified: bool = False
+    course_count: int = 0
+    last_updated: datetime | None = None
+    sources: list[str] = Field(default_factory=list)
+
+
 # ── Degree Summary ───────────────────────────────────────────────────
 
 class DegreeSummaryBucket(BaseModel):

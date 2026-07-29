@@ -16,11 +16,14 @@ SPREADSHEET_MIME_TYPES = {
 # ── Course-code normalization ────────────────────────────────────────
 #
 # Codes at York carry a faculty prefix (``LE/EECS 2101``, ``SC/MATH 1300``).
-# Parsers frequently drop the prefix or the credit-value suffix. These helpers
-# restore a single canonical form so downstream services can key on it.
+# Parsers frequently drop the prefix or the credit-value suffix. Other schools
+# (e.g. SFU) use a bare ``SUBJECT NUMBER`` form with 3-digit numbers and an
+# optional trailing letter (``CMPT 225``, ``MACM 101``, ``CMPT 105W``). These
+# helpers restore a single canonical form so downstream services can key on it.
 #
-# Canonical form: ``<FACULTY>/<SUBJECT> <NUMBER>`` (e.g. ``LE/EECS 2101``), or
-# ``<SUBJECT> <NUMBER>`` when the faculty prefix is unknown and none was given.
+# Canonical form: ``<FACULTY>/<SUBJECT> <NUMBER>`` (e.g. ``LE/EECS 2101``) when
+# the subject is a known York faculty, or the bare ``<SUBJECT> <NUMBER>`` form
+# otherwise (e.g. ``CMPT 225``, ``CMPT 105W``).
 
 # Subject -> faculty-letter prefix, for restoring dropped prefixes. Scoped to
 # the faculties that appear in the York CS checklist; extend as needed. Subjects
@@ -39,25 +42,34 @@ FACULTY_PREFIXES: dict[str, str] = {
 # Science subjects that legitimately belong in a "science lab" breadth bucket.
 _SCIENCE_LAB_SUBJECTS = {"BIOL", "CHEM", "PHYS"}
 
-# Matches an optional 2-letter faculty prefix, a 2-5 letter subject and a
-# 4-digit catalog number, tolerating loose spacing/slashes.
+# Matches an optional 2-letter faculty prefix, a 2-5 letter subject, a 3-OR-
+# 4-digit catalog number, and an optional single trailing letter (e.g. the
+# ``W`` in ``CMPT 105W``), tolerating loose spacing/slashes. Requiring at least
+# 3 digits avoids false positives on prose ("MATH 12", "Chapter 300" fragments
+# still need a subject-like token, but 1-2 digit numbers never match).
 _CODE_RE = re.compile(
-    r"(?:([A-Za-z]{2})\s*/\s*)?([A-Za-z]{2,5})\s*(\d{4})"
+    r"(?:([A-Za-z]{2})\s*/\s*)?([A-Za-z]{2,5})\s*(\d{3,4})([A-Za-z]?)"
 )
 
 
 def normalize_course_code(raw: str | None) -> str:
     """Return the canonical form of a single course code.
 
-    Restores/keeps the faculty prefix (``EECS 2101`` -> ``LE/EECS 2101``),
-    uppercases the subject, drops any credit-value suffix, and normalizes
-    spacing. If no course-code pattern is found the input is returned trimmed.
+    Uppercases the subject and any trailing letter, single-spaces the subject
+    from the number, and drops any credit-value suffix. Restores/keeps the
+    faculty prefix ONLY for known York faculties (``EECS 2101`` ->
+    ``LE/EECS 2101``); for unknown subjects / non-York formats the bare
+    ``SUBJECT NUMBER`` form is returned. If no course-code pattern is found the
+    input is returned trimmed.
 
     Examples:
         ``"le/eecs 2101 3.00"`` -> ``"LE/EECS 2101"``
         ``"EECS2101"``          -> ``"LE/EECS 2101"``
         ``"MATH 1300"``         -> ``"SC/MATH 1300"``
         ``"SC/BIOL 1000 3.00"`` -> ``"SC/BIOL 1000"``
+        ``"cmpt 225"``          -> ``"CMPT 225"``
+        ``"CMPT225"``           -> ``"CMPT 225"``
+        ``"CMPT 105w"``         -> ``"CMPT 105W"``
     """
     if not raw:
         return ""
@@ -65,6 +77,7 @@ def normalize_course_code(raw: str | None) -> str:
     if not m:
         return raw.strip()
     faculty, subject, number = m.group(1), m.group(2).upper(), m.group(3)
+    number += m.group(4).upper()  # optional trailing letter, e.g. "105W"
     faculty = faculty.upper() if faculty else FACULTY_PREFIXES.get(subject)
     if faculty:
         return f"{faculty}/{subject} {number}"

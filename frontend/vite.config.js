@@ -61,4 +61,11 @@ export default defineConfig({
       },
     },
   },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./vitest.setup.js'],
+    // PWA/service-worker plumbing isn't relevant to unit tests.
+    css: false,
+  },
 });
