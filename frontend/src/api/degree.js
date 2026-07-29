@@ -49,6 +49,10 @@ export function deleteCredential(id) {
   return client.delete(`/degree/credentials/${id}`);
 }
 
+export function getCatalogStatus() {
+  return client.get('/degree/catalog-status');
+}
+
 export function getGPA() {
   return client.get('/degree/gpa');
 }

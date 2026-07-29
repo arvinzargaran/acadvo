@@ -88,7 +88,7 @@ def test_sanitize_plan(monkeypatch):
     monkeypatch.setattr("app.services.semester_plan.date", MockDate)
     
     ctx = {
-        "all_codes": {"CS101", "CS102"}, # CS101 and CS102 already exist
+        "all_codes": {"CS 101", "CS 102"}, # CS101 and CS102 already exist
         "skip_summers": True
     }
     
@@ -96,22 +96,22 @@ def test_sanitize_plan(monkeypatch):
         "semesters": [
             {
                 "term": "Winter 2026", # Current, should be dropped
-                "courses": [{"course_code": "CS201"}]
+                "courses": [{"course_code": "CS 201"}]
             },
             {
                 "term": "Summer 2026", # Opted out, should be dropped
-                "courses": [{"course_code": "CS202"}]
+                "courses": [{"course_code": "CS 202"}]
             },
             {
                 "term": "Fall 2026", # Valid
                 "courses": [
-                    {"course_code": "CS101"}, # Already exists, mark
-                    {"course_code": "CS301"}, # New
-                    {"course_code": "CS302"},
-                    {"course_code": "CS303"},
-                    {"course_code": "CS304"},
-                    {"course_code": "CS305"},
-                    {"course_code": "CS306"}, # 7th course, should be capped to 5
+                    {"course_code": "CS 101"}, # Already exists, mark
+                    {"course_code": "CS 301"}, # New
+                    {"course_code": "CS 302"},
+                    {"course_code": "CS 303"},
+                    {"course_code": "CS 304"},
+                    {"course_code": "CS 305"},
+                    {"course_code": "CS 306"}, # 7th course, should be capped to 5
                 ]
             }
         ]
@@ -124,8 +124,8 @@ def test_sanitize_plan(monkeypatch):
     
     courses = cleaned["semesters"][0]["courses"]
     assert len(courses) == 5 # Capped
-    assert courses[0]["course_code"] == "CS101"
+    assert courses[0]["course_code"] == "CS 101"
     assert courses[0]["already_in_plan"] is True
-    assert courses[1]["course_code"] == "CS301"
+    assert courses[1]["course_code"] == "CS 301"
     assert courses[1]["already_in_plan"] is False
     assert "Capped to 5 courses" in cleaned["semesters"][0]["semester_notes"]

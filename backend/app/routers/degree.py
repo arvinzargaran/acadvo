@@ -14,6 +14,7 @@ from app.schemas.degree import (
     AssessmentCreate,
     AssessmentResponse,
     AssessmentUpdate,
+    CatalogStatusResponse,
     CourseCreate,
     CourseGradeProjection,
     CourseResponse,
@@ -31,6 +32,7 @@ from app.schemas.degree import (
     ParsedDegreeDocument,
 )
 from app.services import degree as degree_service
+from app.services.catalog import get_catalog_status
 from app.services.document_parser import parse_degree_document
 
 router = APIRouter()
@@ -130,6 +132,16 @@ async def degree_summary(
     db: AsyncSession = Depends(get_db),
 ):
     return await degree_service.get_degree_summary(current_user.id, db)
+
+
+# ── Catalog Status ───────────────────────────────────────────────────
+
+@router.get("/catalog-status", response_model=CatalogStatusResponse)
+async def catalog_status(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_catalog_status(current_user.university, db)
 
 
 # ── Requirements ─────────────────────────────────────────────────────

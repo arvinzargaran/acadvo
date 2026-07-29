@@ -32,6 +32,59 @@ async def has_seeded_catalog(university: str | None, db: AsyncSession) -> bool:
     return bool(count)
 
 
+async def get_catalog_status(university: str | None, db: AsyncSession) -> dict:
+    """Return a user-facing summary of the catalog backing advising for ``university``.
+
+    The shape is::
+
+        {
+            "university": str | None,
+            "verified": bool,          # True when >=1 seeded CatalogCourse row exists
+            "course_count": int,       # number of CatalogCourse rows for the university
+            "last_updated": datetime | None,  # max(updated_at) across those rows
+            "sources": list[str],      # distinct `source` values, sorted
+        }
+
+    This lets the UI be honest about whether advising is grounded in a verified,
+    seeded catalog or is running best-effort off the student's own uploads.
+    """
+    if not university:
+        return {
+            "university": None,
+            "verified": False,
+            "course_count": 0,
+            "last_updated": None,
+            "sources": [],
+        }
+
+    count = await db.scalar(
+        select(func.count()).select_from(CatalogCourse).where(
+            CatalogCourse.university == university
+        )
+    ) or 0
+
+    last_updated = await db.scalar(
+        select(func.max(CatalogCourse.updated_at)).where(
+            CatalogCourse.university == university
+        )
+    )
+
+    source_rows = await db.execute(
+        select(CatalogCourse.source)
+        .where(CatalogCourse.university == university)
+        .distinct()
+    )
+    sources = sorted(s for s in source_rows.scalars() if s)
+
+    return {
+        "university": university,
+        "verified": count > 0,
+        "course_count": count,
+        "last_updated": last_updated,
+        "sources": sources,
+    }
+
+
 async def get_catalog(
     university: str,
     db: AsyncSession,

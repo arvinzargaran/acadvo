@@ -2,7 +2,7 @@
 
 **AI-powered academic and career advisor for Canadian university students.**
 
-Acadvo helps students plan their degrees strategically, track career targets, build portfolios, and prepare for internships — with an AI advisor that doesn't just chat, but takes real actions. It knows your courses, grades, degree requirements, projects, and career goals, and uses that full picture to add courses to your plan, flag risks, build timelines, and generate semester-by-semester schedules aligned with your university's course catalog. Built specifically for the Canadian university system, with support for 25+ institutions.
+Acadvo helps students plan their degrees strategically, track career targets, build portfolios, and prepare for internships — with an AI advisor that doesn't just chat, but takes real actions. It knows your courses, grades, degree requirements, projects, and career goals, and uses that full picture to add courses to your plan, flag risks, build timelines, and generate semester-by-semester schedules aligned with your university's course catalog. Built specifically for the Canadian university system, with GPA and grading-scale support for 16 Canadian universities. Verified course catalogs (with prerequisites and enrolment gates) currently ship for York (Computer Science, hand-authored) and Simon Fraser University (CMPT and MACM, via the course-ingestion pipeline), with more schools expandable through that same pipeline.
 
 ## Tech Stack
 
