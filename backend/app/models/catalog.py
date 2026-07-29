@@ -43,6 +43,10 @@ class CatalogCourse(Base):
     subject_faculty: Mapped[str | None] = mapped_column(String(32))
     prerequisites: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     gpa_gate: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Provenance: how this row was populated, e.g. "manual" (hand-authored) or an
+    # ingestion adapter id like "sfu_course_outlines". Together with updated_at this
+    # is the "verified as of" signal that keeps the catalog honest.
+    source: Mapped[str] = mapped_column(String(64), nullable=False, default="manual", server_default="manual")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )

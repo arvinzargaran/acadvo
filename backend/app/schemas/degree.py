@@ -166,7 +166,17 @@ class AssessmentCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     due_date: datetime | None = None
     weight: float = Field(default=0.0, ge=0, le=100)
+    score: float | None = Field(default=None, ge=0, le=100)
     category: AssessmentCategoryType = "other"
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class AssessmentUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    due_date: datetime | None = None
+    weight: float | None = Field(default=None, ge=0, le=100)
+    score: float | None = Field(default=None, ge=0, le=100)
+    category: AssessmentCategoryType | None = None
     notes: str | None = Field(default=None, max_length=2000)
 
 
@@ -178,6 +188,7 @@ class AssessmentResponse(BaseModel):
     title: str
     due_date: datetime | None = None
     weight: float
+    score: float | None = None
     category: str
     notes: str | None = None
     created_at: datetime
@@ -194,6 +205,31 @@ class ParsedSyllabus(BaseModel):
     assessments: list[ParsedAssessment]
 
 
+class CourseGradeProjection(BaseModel):
+    """Final-grade projection for a course.
+
+    All weights/scores are percentages. ``current_weighted_pct`` is the
+    student's average over the graded portion only; ``projected_final_pct``
+    extrapolates that average across the remaining (ungraded) weight — i.e. it
+    assumes the student maintains their current standing on what's left.
+    """
+
+    graded_weight: float
+    total_weight: float
+    remaining_weight: float
+    current_weighted_pct: float | None = None
+    projected_final_pct: float | None = None
+    projected_letter: str | None = None
+    projected_gpa_points: float | None = None
+    scale_name: str
+    scale_max: float
+    # Populated only when a ``target`` is supplied to the projection endpoint.
+    target_final_pct: float | None = None
+    score_needed_on_remaining: float | None = None
+    target_achievable: bool | None = None
+    target_already_secured: bool | None = None
+
+
 # ── GPA ─────────────────────────────────────────────────────────────
 
 class TermGPA(BaseModel):
@@ -207,6 +243,7 @@ class MajorGPA(BaseModel):
     scope: str
     gpa: float | None
     credits: float
+    gate: float
     meets_gate: bool
 
 
@@ -221,3 +258,42 @@ class GPAResponse(BaseModel):
     scale_name: str
     using_fallback: bool
     major_gpas: list[MajorGPA] = []
+
+
+class GPAGoalResponse(BaseModel):
+    """Reverse goal projection: the average GPA a student must earn on their
+    remaining credits to reach a target cumulative GPA.
+
+    ``needed_average`` = (target*(completed+remaining) - cumulative*completed)
+    / remaining, using the completed side from ``calculate_gpa``. It is clamped
+    to >= 0 for display, with ``already_met`` flagging the case where the raw
+    requirement is <= 0 (the target is already secured regardless of remaining
+    work) and ``achievable`` flagging whether it fits under ``scale_max``.
+    """
+
+    target: float
+    remaining_credits: float
+    current_cumulative_gpa: float | None
+    total_credits_completed: float
+    needed_average: float
+    achievable: bool
+    already_met: bool
+    scale_max: float
+
+
+class MajorGPAGoalResponse(BaseModel):
+    """Reverse goal projection for a subject-subset (major) GPA gate — e.g. the
+    average a student must earn on their next N EECS credits to clear York's
+    4.50 EECS-major gate. Mirrors :class:`GPAGoalResponse` but the target is the
+    program ``gate`` and the completed side comes from ``calculate_major_gpa``."""
+
+    scope: str
+    gate: float
+    remaining_credits: float
+    current_major_gpa: float | None
+    major_credits_completed: float
+    needed_average: float
+    achievable: bool
+    already_met: bool
+    meets_gate: bool
+    scale_max: float

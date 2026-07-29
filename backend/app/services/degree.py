@@ -5,11 +5,13 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.data.grading_scales import build_grade_map, get_scale
+from app.data.grading_scales import build_grade_map, get_scale, map_percent_to_grade
+from app.data.program_config import get_major_gpa_gates
 from app.models.degree import Assessment, AssessmentCategory, Course, CourseStatus, Credential, DegreeRequirement
 from app.models.user import User
 from app.schemas.degree import (
     AssessmentCreate,
+    AssessmentUpdate,
     CourseCreate,
     CourseUpdate,
     CredentialCreate,
@@ -402,9 +404,13 @@ async def calculate_gpa(user_id: uuid.UUID, db: AsyncSession) -> dict:
         highest_term = max(term_gpas, key=lambda t: t["gpa"])
         lowest_term = min(term_gpas, key=lambda t: t["gpa"])
 
-    # 7. Subject-subset (major) GPAs — the number some programs gate on
-    #    (e.g. York gates 2000+ EECS courses behind a 4.50 EECS-major GPA).
-    major_gpas = [await calculate_major_gpa(user_id, db, faculty_prefix="EECS")]
+    # 7. Subject-subset (major) GPAs — only for programs that actually define a
+    #    gate (e.g. York's 4.50 EECS-major GPA). Universities without a configured
+    #    gate return no major GPAs, so we don't apply York's rule to everyone.
+    major_gpas = [
+        await calculate_major_gpa(user_id, db, faculty_prefix=g["scope"], gate=g["min"])
+        for g in get_major_gpa_gates(university)
+    ]
 
     return {
         "cumulative_gpa": cumulative_gpa,
@@ -471,7 +477,95 @@ async def calculate_major_gpa(
         "scope": faculty_prefix,
         "gpa": gpa,
         "credits": total_credits,
+        "gate": gate,
         "meets_gate": gpa is not None and gpa >= gate,
+    }
+
+
+# ── GPA Goal Projection ─────────────────────────────────────────────
+
+async def project_gpa_goal(
+    user_id: uuid.UUID, db: AsyncSession, target: float, remaining_credits: float
+) -> dict:
+    """Reverse-project the average GPA needed on the remaining credits to reach a
+    target cumulative GPA.
+
+        needed_average = (target*(completed+remaining) - cumulative*completed)
+                         / remaining
+
+    where ``completed`` and ``cumulative`` come from :func:`calculate_gpa` (a
+    student with no graded courses yet simply needs to average ``target``). The
+    raw requirement is clamped to >= 0 for display; ``already_met`` flags a raw
+    value <= 0 (target already secured) and ``achievable`` flags whether it fits
+    under the university ``scale_max``. Guards divide-by-zero on remaining <= 0.
+    """
+    if remaining_credits <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="remaining_credits must be greater than zero.",
+        )
+
+    gpa_data = await calculate_gpa(user_id, db)
+    completed = gpa_data["total_credits_completed"]
+    cumulative = gpa_data["cumulative_gpa"] or 0.0
+    scale_max = gpa_data["scale_max"]
+
+    needed = (target * (completed + remaining_credits) - cumulative * completed) / remaining_credits
+
+    return {
+        "target": target,
+        "remaining_credits": remaining_credits,
+        "current_cumulative_gpa": gpa_data["cumulative_gpa"],
+        "total_credits_completed": completed,
+        "needed_average": round(max(needed, 0.0), 2),
+        "achievable": needed <= scale_max + 1e-9,
+        "already_met": needed <= 0,
+        "scale_max": scale_max,
+    }
+
+
+async def project_major_gpa_goal(
+    user_id: uuid.UUID,
+    db: AsyncSession,
+    remaining_credits: float,
+    faculty_prefix: str = "EECS",
+    gate: float = 4.50,
+) -> dict:
+    """Reverse-project the average GPA needed on the next ``remaining_credits`` of
+    subject-subset (major) courses to clear a program gate (e.g. York's 4.50
+    EECS-major gate). Same math as :func:`project_gpa_goal` with the target fixed
+    to ``gate`` and the completed side from :func:`calculate_major_gpa`.
+
+    ``already_met`` is True when the student ALREADY meets the gate (or the raw
+    requirement is <= 0). Guards divide-by-zero on remaining <= 0.
+    """
+    if remaining_credits <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="remaining_credits must be greater than zero.",
+        )
+
+    major = await calculate_major_gpa(user_id, db, faculty_prefix=faculty_prefix, gate=gate)
+    # calculate_major_gpa uses the same scale; pull scale_max from the cumulative calc.
+    gpa_data = await calculate_gpa(user_id, db)
+    scale_max = gpa_data["scale_max"]
+
+    completed = major["credits"]
+    current = major["gpa"] or 0.0
+
+    needed = (gate * (completed + remaining_credits) - current * completed) / remaining_credits
+
+    return {
+        "scope": major["scope"],
+        "gate": gate,
+        "remaining_credits": remaining_credits,
+        "current_major_gpa": major["gpa"],
+        "major_credits_completed": completed,
+        "needed_average": round(max(needed, 0.0), 2),
+        "achievable": needed <= scale_max + 1e-9,
+        "already_met": major["meets_gate"] or needed <= 0,
+        "meets_gate": major["meets_gate"],
+        "scale_max": scale_max,
     }
 
 
@@ -497,6 +591,134 @@ async def create_assessment(
     await db.commit()
     await db.refresh(assessment)
     return assessment
+
+
+async def get_assessment(
+    assessment_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession
+) -> Assessment:
+    """Fetch an assessment, verifying it belongs to a course owned by the user."""
+    result = await db.execute(
+        select(Assessment)
+        .join(Course, Assessment.course_id == Course.id)
+        .where(Assessment.id == assessment_id, Course.user_id == user_id)
+    )
+    assessment = result.scalar_one_or_none()
+    if assessment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assessment not found")
+    return assessment
+
+
+async def update_assessment(
+    assessment_id: uuid.UUID, user_id: uuid.UUID, data: AssessmentUpdate, db: AsyncSession
+) -> Assessment:
+    assessment = await get_assessment(assessment_id, user_id, db)
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(assessment, field, value)
+    db.add(assessment)
+    await db.commit()
+    await db.refresh(assessment)
+    return assessment
+
+
+async def delete_assessment(
+    assessment_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession
+) -> None:
+    assessment = await get_assessment(assessment_id, user_id, db)
+    await db.delete(assessment)
+    await db.commit()
+
+
+async def project_course_grade(
+    course_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession, target: float | None = None
+) -> dict:
+    """Project a course's final grade from its logged assessment scores.
+
+    Units: each assessment's ``weight`` is a percent of the final grade and its
+    ``score`` is a percent (0-100) earned on that assessment. An assessment is
+    "graded" once it has a non-null score.
+
+    Definitions (all robust against a total weight that is <100 or >100, e.g. a
+    partially-parsed syllabus):
+      - earned_points  = Σ weight_i * score_i / 100        (final-grade points)
+      - current standing = earned_points / graded_weight * 100  (average on graded work)
+      - projected final = current standing extrapolated across the remaining
+        (ungraded) weight — i.e. we ASSUME the student maintains their current
+        average on what's left. Normalised over total_weight this reduces to the
+        current standing, but is computed against total_weight so it stays correct
+        when the parsed weights don't sum to 100.
+      - if ``target`` (desired final %) is given, the average needed on the
+        remaining weight is: (target/100 * total_weight - earned_points) /
+        remaining_weight * 100, flagged impossible (>100) or already-secured (<=0).
+    """
+    await get_course(course_id, user_id, db)
+    result = await db.execute(select(Assessment).where(Assessment.course_id == course_id))
+    assessments = list(result.scalars().all())
+
+    total_weight = sum(float(a.weight) for a in assessments)
+    graded = [a for a in assessments if a.score is not None]
+    graded_weight = sum(float(a.weight) for a in graded)
+    remaining_weight = max(total_weight - graded_weight, 0.0)
+    earned_points = sum(float(a.weight) * float(a.score) / 100.0 for a in graded)
+
+    # Resolve the student's grading scale for letter/GPA mapping.
+    user_result = await db.execute(select(User).where(User.id == user_id))
+    user = user_result.scalar_one_or_none()
+    university = user.university if user else None
+    scale, using_fallback = get_scale(university)
+    scale_max = scale["max_points"]
+    scale_name = (
+        f"{university} {scale['scale_type']}-point scale"
+        if not using_fallback
+        else "Standard 4.0 scale"
+    )
+
+    current_weighted_pct: float | None = None
+    projected_final_pct: float | None = None
+    projected_letter: str | None = None
+    projected_gpa_points: float | None = None
+
+    if graded_weight > 0:
+        current_weighted_pct = round(earned_points / graded_weight * 100.0, 2)
+        # Assume current standing is maintained on the remaining weight.
+        projected_points = earned_points + remaining_weight * (current_weighted_pct / 100.0)
+        projected_final_pct = round(
+            projected_points / total_weight * 100.0, 2
+        ) if total_weight > 0 else current_weighted_pct
+        letter, points = map_percent_to_grade(scale, projected_final_pct)
+        projected_letter = letter
+        projected_gpa_points = points
+
+    out: dict = {
+        "graded_weight": round(graded_weight, 2),
+        "total_weight": round(total_weight, 2),
+        "remaining_weight": round(remaining_weight, 2),
+        "current_weighted_pct": current_weighted_pct,
+        "projected_final_pct": projected_final_pct,
+        "projected_letter": projected_letter,
+        "projected_gpa_points": projected_gpa_points,
+        "scale_name": scale_name,
+        "scale_max": scale_max,
+    }
+
+    if target is not None:
+        out["target_final_pct"] = target
+        # Points still needed = target share of the whole course minus what's earned.
+        needed_points = target / 100.0 * total_weight - earned_points
+        if remaining_weight <= 0:
+            # Nothing left to grade — achievable only if already at/above target.
+            secured = earned_points >= target / 100.0 * total_weight - 1e-9
+            out["score_needed_on_remaining"] = None
+            out["target_already_secured"] = secured
+            out["target_achievable"] = secured
+        else:
+            needed_avg = needed_points / remaining_weight * 100.0
+            already_secured = needed_avg <= 0
+            achievable = needed_avg <= 100.0 + 1e-9
+            out["score_needed_on_remaining"] = round(max(needed_avg, 0.0), 2)
+            out["target_already_secured"] = already_secured
+            out["target_achievable"] = achievable
+
+    return out
 
 
 async def delete_assessments_for_course(

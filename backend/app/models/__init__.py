@@ -1,7 +1,7 @@
 from app.models.user import User, RefreshToken, VerificationToken
 from app.models.conversation import Conversation
 from app.models.message import Message
-from app.models.degree import DegreeRequirement, Course, Credential
+from app.models.degree import DegreeRequirement, Course, Credential, Assessment
 from app.models.project import Project, Milestone
 from app.models.career import CareerTarget, TimelineEvent
 from app.models.suggestion import AISuggestion
@@ -19,6 +19,7 @@ __all__ = [
     "DegreeRequirement",
     "Course",
     "Credential",
+    "Assessment",
     "Project",
     "Milestone",
     "CareerTarget",

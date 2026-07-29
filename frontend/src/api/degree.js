@@ -53,8 +53,37 @@ export function getGPA() {
   return client.get('/degree/gpa');
 }
 
+export function getGPAGoal(target, remainingCredits) {
+  return client.get('/degree/gpa/goal', {
+    params: { target, remaining_credits: remainingCredits },
+  });
+}
+
+export function getGPAGoalMajor(remainingCredits, scope) {
+  const params = { remaining_credits: remainingCredits };
+  if (scope) params.scope = scope;
+  return client.get('/degree/gpa/goal/major', { params });
+}
+
 export function listAssessments(courseId) {
   return client.get(`/degree/courses/${courseId}/assessments`);
+}
+
+export function createAssessment(courseId, data) {
+  return client.post(`/degree/courses/${courseId}/assessments`, data);
+}
+
+export function updateAssessment(assessmentId, data) {
+  return client.put(`/degree/assessments/${assessmentId}`, data);
+}
+
+export function deleteAssessment(assessmentId) {
+  return client.delete(`/degree/assessments/${assessmentId}`);
+}
+
+export function getGradeProjection(courseId, target) {
+  const params = target != null && target !== '' ? { target } : {};
+  return client.get(`/degree/courses/${courseId}/grade-projection`, { params });
 }
 
 export function parseSyllabus(courseId, file) {

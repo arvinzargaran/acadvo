@@ -10,9 +10,26 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import func
+
 from app.models.catalog import CatalogCourse
 from app.models.degree import Course
 from app.services.document_parser import normalize_course_code, subject_of
+
+
+async def has_seeded_catalog(university: str | None, db: AsyncSession) -> bool:
+    """True when a verified, seeded catalog (authoritative ``CatalogCourse`` rows)
+    exists for ``university``. Callers use this to distinguish "verified" advising
+    (grounded in a real catalog) from "best-effort" advising for universities we
+    have not seeded yet — so the app can be honest about which one it is doing."""
+    if not university:
+        return False
+    count = await db.scalar(
+        select(func.count()).select_from(CatalogCourse).where(
+            CatalogCourse.university == university
+        )
+    )
+    return bool(count)
 
 
 async def get_catalog(

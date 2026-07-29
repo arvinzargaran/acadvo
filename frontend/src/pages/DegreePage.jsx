@@ -9,6 +9,7 @@ import ParsedDataReview from '../components/degree/ParsedDataReview';
 import CredentialsSection from '../components/degree/CredentialsSection';
 import RequirementForm from '../components/degree/RequirementForm';
 import GPACalculator from '../components/dashboard/GPACalculator';
+import GPATrendGoal from '../components/degree/GPATrendGoal';
 import AssessmentsPanel from '../components/degree/AssessmentsPanel';
 import Modal from '../components/ui/Modal';
 import Skeleton from '../components/ui/Skeleton';
@@ -299,7 +300,10 @@ export default function DegreePage() {
       ) : view === 'credentials' ? (
         <CredentialsSection credentials={credentials} courses={courses} onRefresh={refreshData} />
       ) : view === 'gpa' ? (
-        <GPACalculator />
+        <div className="space-y-6">
+          <GPACalculator />
+          <GPATrendGoal />
+        </div>
       ) : view === 'assessments' ? (
         <div className="space-y-4">
           {/* Course selector */}

@@ -1,5 +1,12 @@
 import { useState, useEffect } from 'react';
-import { listAssessments } from '../../api/degree';
+import {
+  listAssessments,
+  createAssessment,
+  updateAssessment,
+  deleteAssessment,
+  getGradeProjection,
+} from '../../api/degree';
+import { getErrorMessage } from '../../utils/errors';
 import SyllabusUpload from './SyllabusUpload';
 
 const categoryColors = {
@@ -16,6 +23,8 @@ const categoryIcons = {
   other: 'M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z',
 };
 
+const categoryOptions = ['exam', 'assignment', 'quiz', 'other'];
+
 function formatDate(dateStr) {
   if (!dateStr) return null;
   const d = new Date(dateStr);
@@ -31,6 +40,25 @@ export default function AssessmentsPanel({ course }) {
   const [assessments, setAssessments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [error, setError] = useState('');
+
+  const [projection, setProjection] = useState(null);
+  const [target, setTarget] = useState('');
+
+  const [newAssessment, setNewAssessment] = useState({
+    title: '', weight: '', category: 'exam', score: '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const fetchProjection = async (targetVal) => {
+    try {
+      const { data } = await getGradeProjection(course.id, targetVal);
+      setProjection(data);
+    } catch {
+      setProjection(null);
+    }
+  };
 
   const fetchAssessments = async () => {
     setLoading(true);
@@ -40,9 +68,11 @@ export default function AssessmentsPanel({ course }) {
       // Auto-show upload if no assessments exist
       if (data.length === 0) setShowUpload(true);
       else setShowUpload(false);
+      await fetchProjection(target);
     } catch {
       setAssessments([]);
       setShowUpload(true);
+      setProjection(null);
     } finally {
       setLoading(false);
     }
@@ -50,11 +80,74 @@ export default function AssessmentsPanel({ course }) {
 
   useEffect(() => {
     fetchAssessments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [course.id]);
 
   const handleParsed = () => {
     // Re-fetch from server to get the full merged list after multi-doc upload
     fetchAssessments();
+  };
+
+  const handleTargetChange = (e) => {
+    const val = e.target.value;
+    setTarget(val);
+    fetchProjection(val);
+  };
+
+  const handleScoreSave = async (assessment, rawValue) => {
+    const trimmed = rawValue.trim();
+    const nextScore = trimmed === '' ? null : Number(trimmed);
+    // No-op if unchanged
+    if (nextScore === assessment.score) return;
+    if (nextScore !== null && (Number.isNaN(nextScore) || nextScore < 0 || nextScore > 100)) {
+      setError('Score must be between 0 and 100.');
+      return;
+    }
+    setError('');
+    try {
+      await updateAssessment(assessment.id, { score: nextScore });
+      const { data } = await listAssessments(course.id);
+      setAssessments(data);
+      await fetchProjection(target);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to save score.'));
+    }
+  };
+
+  const handleDelete = async (assessment) => {
+    setError('');
+    try {
+      await deleteAssessment(assessment.id);
+      setAssessments((prev) => prev.filter((a) => a.id !== assessment.id));
+      await fetchProjection(target);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to delete assessment.'));
+    }
+  };
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    if (!newAssessment.title.trim()) {
+      setError('Title is required.');
+      return;
+    }
+    setError('');
+    setSaving(true);
+    try {
+      await createAssessment(course.id, {
+        title: newAssessment.title.trim(),
+        weight: newAssessment.weight === '' ? 0 : Number(newAssessment.weight),
+        category: newAssessment.category,
+        score: newAssessment.score === '' ? null : Number(newAssessment.score),
+      });
+      setNewAssessment({ title: '', weight: '', category: 'exam', score: '' });
+      setShowAdd(false);
+      await fetchAssessments();
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to add assessment.'));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const totalWeight = assessments.reduce((sum, a) => sum + a.weight, 0);
@@ -75,7 +168,7 @@ export default function AssessmentsPanel({ course }) {
 
   return (
     <div className="space-y-4">
-      {/* Header with weight progress */}
+      {/* Header with actions */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h4 className="text-white font-medium">
@@ -85,16 +178,102 @@ export default function AssessmentsPanel({ course }) {
             {assessments.length} item{assessments.length !== 1 ? 's' : ''}
           </span>
         </div>
-        <button
-          onClick={() => setShowUpload(!showUpload)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white text-xs font-medium rounded-lg transition-all"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-          </svg>
-          {assessments.length > 0 ? 'Re-parse Syllabus' : 'Upload Syllabus'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setShowAdd(!showAdd); setError(''); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-dark-700 hover:bg-dark-600 text-white text-xs font-medium rounded-lg transition-all"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add
+          </button>
+          <button
+            onClick={() => setShowUpload(!showUpload)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white text-xs font-medium rounded-lg transition-all"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            {assessments.length > 0 ? 'Re-parse Syllabus' : 'Upload Syllabus'}
+          </button>
+        </div>
       </div>
+
+      {error && <p className="text-red-400 text-sm">{error}</p>}
+
+      {/* Grade projection summary */}
+      {projection && projection.total_weight > 0 && (
+        <div className="bg-dark-900/50 border border-dark-700 rounded-lg p-4 space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <p className="text-dark-500 text-[11px] uppercase tracking-wide">Current Standing</p>
+              <p className="text-white text-lg font-semibold">
+                {projection.current_weighted_pct != null ? `${projection.current_weighted_pct}%` : '—'}
+              </p>
+              <p className="text-dark-500 text-[10px]">on {projection.graded_weight}% graded</p>
+            </div>
+            <div>
+              <p className="text-dark-500 text-[11px] uppercase tracking-wide">Projected Final</p>
+              <p className="text-white text-lg font-semibold">
+                {projection.projected_final_pct != null ? `${projection.projected_final_pct}%` : '—'}
+              </p>
+              <p className="text-dark-500 text-[10px]">if pace maintained</p>
+            </div>
+            <div>
+              <p className="text-dark-500 text-[11px] uppercase tracking-wide">Letter</p>
+              <p className="text-primary-400 text-lg font-semibold">
+                {projection.projected_letter || '—'}
+              </p>
+            </div>
+            <div>
+              <p className="text-dark-500 text-[11px] uppercase tracking-wide">GPA Points</p>
+              <p className="text-primary-400 text-lg font-semibold">
+                {projection.projected_gpa_points != null ? projection.projected_gpa_points : '—'}
+              </p>
+              <p className="text-dark-500 text-[10px]">/ {projection.scale_max}</p>
+            </div>
+          </div>
+
+          {/* Target planner */}
+          <div className="border-t border-dark-700 pt-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-dark-400 text-xs">Target final %</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={target}
+                onChange={handleTargetChange}
+                placeholder="e.g. 85"
+                className="w-20 bg-dark-800 border border-dark-600 rounded-md px-2 py-1 text-white text-sm focus:outline-none focus:border-primary-500"
+              />
+              {target !== '' && projection.target_final_pct != null && (
+                <span className="text-sm">
+                  {projection.remaining_weight <= 0 ? (
+                    projection.target_already_secured ? (
+                      <span className="text-green-400">Already secured — no graded work remains.</span>
+                    ) : (
+                      <span className="text-red-400">Out of reach — no graded work remains.</span>
+                    )
+                  ) : projection.target_already_secured ? (
+                    <span className="text-green-400">Already secured with your logged scores.</span>
+                  ) : projection.target_achievable ? (
+                    <span className="text-dark-200">
+                      Need <span className="text-green-400 font-semibold">{projection.score_needed_on_remaining}%</span> avg
+                      on the remaining {projection.remaining_weight}%.
+                    </span>
+                  ) : (
+                    <span className="text-red-400">
+                      Not achievable — would need {projection.score_needed_on_remaining}% on the remaining {projection.remaining_weight}%.
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Grade weight progress bar */}
       {assessments.length > 0 && (
@@ -117,6 +296,64 @@ export default function AssessmentsPanel({ course }) {
             </p>
           )}
         </div>
+      )}
+
+      {/* Manual add form */}
+      {showAdd && (
+        <form onSubmit={handleAdd} className="bg-dark-800 border border-dark-700 rounded-lg p-3 space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="text"
+              value={newAssessment.title}
+              onChange={(e) => setNewAssessment({ ...newAssessment, title: e.target.value })}
+              placeholder="Title (e.g. Midterm)"
+              className="flex-1 min-w-[140px] bg-dark-900 border border-dark-600 rounded-md px-2 py-1.5 text-white text-sm focus:outline-none focus:border-primary-500"
+            />
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={newAssessment.weight}
+              onChange={(e) => setNewAssessment({ ...newAssessment, weight: e.target.value })}
+              placeholder="Weight %"
+              className="w-24 bg-dark-900 border border-dark-600 rounded-md px-2 py-1.5 text-white text-sm focus:outline-none focus:border-primary-500"
+            />
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={newAssessment.score}
+              onChange={(e) => setNewAssessment({ ...newAssessment, score: e.target.value })}
+              placeholder="Score %"
+              className="w-24 bg-dark-900 border border-dark-600 rounded-md px-2 py-1.5 text-white text-sm focus:outline-none focus:border-primary-500"
+            />
+            <select
+              value={newAssessment.category}
+              onChange={(e) => setNewAssessment({ ...newAssessment, category: e.target.value })}
+              className="bg-dark-900 border border-dark-600 rounded-md px-2 py-1.5 text-white text-sm focus:outline-none focus:border-primary-500"
+            >
+              {categoryOptions.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-3 py-1.5 bg-primary-600 hover:bg-primary-500 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
+            >
+              {saving ? 'Adding…' : 'Add assessment'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowAdd(false); setError(''); }}
+              className="px-3 py-1.5 text-dark-400 hover:text-white text-xs transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
       )}
 
       {/* Upload zone */}
@@ -149,13 +386,30 @@ export default function AssessmentsPanel({ course }) {
                   {a.notes && <p className="text-dark-400 text-xs truncate">{a.notes}</p>}
                 </div>
 
+                {/* Score input */}
+                <div className="flex-shrink-0 flex items-center gap-1">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    defaultValue={a.score ?? ''}
+                    key={`${a.id}-${a.score}`}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                    onBlur={(e) => handleScoreSave(a, e.target.value)}
+                    placeholder="—"
+                    title="Score earned (%)"
+                    className="w-16 bg-dark-900 border border-dark-600 rounded-md px-2 py-1 text-white text-sm text-right focus:outline-none focus:border-primary-500"
+                  />
+                  <span className="text-dark-500 text-xs">%</span>
+                </div>
+
                 {/* Weight */}
-                <div className="flex-shrink-0 text-right">
-                  <span className="text-white text-sm font-semibold">{a.weight}%</span>
+                <div className="flex-shrink-0 w-16 text-right">
+                  <span className="text-dark-300 text-xs">wt {a.weight}%</span>
                 </div>
 
                 {/* Due date */}
-                <div className="flex-shrink-0 w-28 text-right">
+                <div className="flex-shrink-0 w-24 text-right">
                   {a.due_date ? (
                     <div>
                       <p className={`text-xs font-medium ${isPast ? 'text-dark-500' : isUrgent ? 'text-red-400' : 'text-dark-300'}`}>
@@ -171,17 +425,28 @@ export default function AssessmentsPanel({ course }) {
                     <span className="text-dark-500 text-xs">No date</span>
                   )}
                 </div>
+
+                {/* Delete */}
+                <button
+                  onClick={() => handleDelete(a)}
+                  title="Delete assessment"
+                  className="flex-shrink-0 text-dark-500 hover:text-red-400 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
               </div>
             );
           })}
         </div>
-      ) : !showUpload ? (
+      ) : !showUpload && !showAdd ? (
         <div className="text-center py-8 bg-dark-800 border border-dark-700 rounded-lg">
           <svg className="w-10 h-10 text-dark-500 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
           <p className="text-dark-400 text-sm">No assessments found for this course.</p>
-          <p className="text-dark-500 text-xs mt-1">Upload a syllabus to auto-extract assessments.</p>
+          <p className="text-dark-500 text-xs mt-1">Upload a syllabus to auto-extract, or add one manually.</p>
         </div>
       ) : null}
     </div>
