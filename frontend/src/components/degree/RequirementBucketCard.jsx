@@ -20,9 +20,9 @@ export default function RequirementBucketCard({ requirement, courses }) {
 
   return (
     <Card className={atRisk ? 'border-red-500/50' : ''}>
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-white font-semibold">{requirement.bucket_name}</h3>
-        {atRisk && <Badge color="red">At Risk</Badge>}
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <h3 className="font-display text-lg text-dark-50">{requirement.bucket_name}</h3>
+        {atRisk && <Badge color="red" dot>At Risk</Badge>}
       </div>
       <ProgressBar
         value={pct}
@@ -33,13 +33,13 @@ export default function RequirementBucketCard({ requirement, courses }) {
           {bucketCourses.map(c => (
             <div key={c.id} className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-2">
-                <span className="text-white">{c.course_code}</span>
+                <span className="font-medium text-dark-50">{c.course_code}</span>
                 <span className="text-dark-400">{c.course_name}</span>
               </div>
               <div className="flex items-center gap-2">
                 {c.grade && <span className="text-dark-300 text-xs">{c.grade}</span>}
                 {c.term && <span className="text-dark-400 text-xs">{c.term}</span>}
-                <Badge color={statusColors[c.status]}>{c.status.replace('_', ' ')}</Badge>
+                <Badge color={statusColors[c.status]} variant="label" dot>{c.status.replace('_', ' ')}</Badge>
               </div>
             </div>
           ))}

@@ -119,14 +119,14 @@ function GoalResult({ goal, label }) {
 
   return (
     <div className="bg-dark-900/50 border border-dark-700 rounded-lg p-4">
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-dark-400 text-xs">{label}</p>
-        <Badge color={badge}>{state}</Badge>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <p className="eyebrow">{label}</p>
+        <Badge color={badge} dot>{state}</Badge>
       </div>
       {already_met ? (
-        <p className={`text-2xl font-bold ${textColor}`}>You're already there</p>
+        <p className={`font-display text-2xl ${textColor}`}>You're already there</p>
       ) : (
-        <p className={`text-3xl font-bold ${textColor}`}>
+        <p className={`font-display tabular-nums text-3xl ${textColor}`}>
           {needed_average.toFixed(2)}
           <span className="text-base text-dark-500 font-normal"> / {scale_max}</span>
         </p>
@@ -141,7 +141,7 @@ function GoalResult({ goal, label }) {
 }
 
 const inputCls =
-  'w-full bg-dark-900 border border-dark-600 text-white rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500';
+  'w-full bg-dark-900 border border-dark-600 text-dark-50 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500';
 
 export default function GPATrendGoal() {
   const [gpa, setGpa] = useState(null);
@@ -224,8 +224,8 @@ export default function GPATrendGoal() {
     <div className="space-y-6">
       {/* GPA Trend chart */}
       <Card>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white">GPA Trend</h2>
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <h2 className="font-display text-xl text-dark-50">GPA Trend</h2>
           <span className="text-dark-400 text-sm">{gpa?.scale_name}</span>
         </div>
         {hasTrend ? (
@@ -251,7 +251,7 @@ export default function GPATrendGoal() {
 
       {/* Goal projection calculator */}
       <Card>
-        <h2 className="text-lg font-semibold text-white mb-1">Goal Projection</h2>
+        <h2 className="font-display text-xl text-dark-50 mb-1">Goal Projection</h2>
         <p className="text-dark-400 text-sm mb-4">
           What average do you need on your remaining credits to hit a target cumulative GPA?
         </p>
@@ -288,7 +288,7 @@ export default function GPATrendGoal() {
       {/* Major-gate goal — only when the student has a gated major scope */}
       {majorScope && (
         <Card>
-          <h2 className="text-lg font-semibold text-white mb-1">{majorScope}-Major Gate</h2>
+          <h2 className="font-display text-xl text-dark-50 mb-1">{majorScope}-Major Gate</h2>
           <p className="text-dark-400 text-sm mb-4">
             What average do you need on your next {majorScope} credits to clear the
             {majorGoal?.gate != null ? ` ${majorGoal.gate}` : ''} {majorScope}-major gate?
@@ -307,12 +307,12 @@ export default function GPATrendGoal() {
             <>
               <div className="flex flex-wrap gap-4 mb-3 text-sm">
                 <span className="text-dark-400">Current {majorScope} GPA:
-                  <span className="text-white font-semibold ml-1">
+                  <span className="text-dark-50 font-semibold ml-1">
                     {majorGoal.current_major_gpa != null ? majorGoal.current_major_gpa.toFixed(2) : '—'}
                   </span>
                 </span>
                 <span className="text-dark-400">{majorScope} credits done:
-                  <span className="text-white font-semibold ml-1">{majorGoal.major_credits_completed}</span>
+                  <span className="text-dark-50 font-semibold ml-1">{majorGoal.major_credits_completed}</span>
                 </span>
               </div>
               <GoalResult

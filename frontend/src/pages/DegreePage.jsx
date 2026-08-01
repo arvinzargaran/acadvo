@@ -14,6 +14,21 @@ import GPATrendGoal from '../components/degree/GPATrendGoal';
 import AssessmentsPanel from '../components/degree/AssessmentsPanel';
 import Modal from '../components/ui/Modal';
 import Skeleton from '../components/ui/Skeleton';
+import PageHeader from '../components/ui/PageHeader';
+import Stat from '../components/ui/Stat';
+import Card from '../components/ui/Card';
+import Button from '../components/ui/Button';
+import ProgressBar from '../components/ui/ProgressBar';
+
+const VIEWS = [
+  { key: 'courses', label: 'Courses' },
+  { key: 'buckets', label: 'Requirements' },
+  { key: 'planner', label: 'Planner' },
+  { key: 'credentials', label: 'Credentials' },
+  { key: 'gpa', label: 'GPA' },
+  { key: 'assessments', label: 'Assessments' },
+  { key: 'flow', label: 'Flow' },
+];
 import { getDegreeSummary, listRequirements, listCourses, listCredentials, createRequirement, createCourse, updateCourse, deleteCourse } from '../api/degree';
 import { getErrorMessage } from '../utils/errors';
 
@@ -182,88 +197,58 @@ export default function DegreePage() {
           <button onClick={() => setError('')} className="ml-3 hover:text-red-300">✕</button>
         </div>
       )}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Degree Plan</h1>
-        <div className="flex items-center gap-3">
-          <ExportPDF courses={courses} requirements={requirements} summary={summary} />
+      <PageHeader
+        eyebrow="Your degree"
+        title="Degree Plan"
+        subtitle="Requirements, courses, GPA, and the path to your credential — in one place."
+        actions={
+          <>
+            <ExportPDF courses={courses} requirements={requirements} summary={summary} />
+            <Button variant="accent" onClick={() => setImportOpen(true)}>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              Import Document
+            </Button>
+          </>
+        }
+      />
+
+      {/* View switcher */}
+      <div className="flex flex-wrap items-center gap-1 rounded-xl bg-dark-800 ring-1 ring-black/5 dark:ring-white/10 p-1">
+        {VIEWS.map(v => (
           <button
-            onClick={() => setImportOpen(true)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition-all"
+            key={v.key}
+            onClick={() => setView(v.key)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+              view === v.key ? 'bg-primary-600 text-white shadow-sm' : 'text-dark-400 hover:text-dark-50'
+            }`}
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
-            Import Document
+            {v.label}
           </button>
-          <div className="flex bg-dark-800 rounded-lg p-0.5">
-            <button
-              onClick={() => setView('courses')}
-              className={`px-3 py-1.5 rounded-md text-sm transition ${view === 'courses' ? 'bg-primary-600 text-white' : 'text-dark-400 hover:text-white'}`}
-            >
-              Courses
-            </button>
-            <button
-              onClick={() => setView('buckets')}
-              className={`px-3 py-1.5 rounded-md text-sm transition ${view === 'buckets' ? 'bg-primary-600 text-white' : 'text-dark-400 hover:text-white'}`}
-            >
-              Requirements
-            </button>
-            <button
-              onClick={() => setView('planner')}
-              className={`px-3 py-1.5 rounded-md text-sm transition ${view === 'planner' ? 'bg-primary-600 text-white' : 'text-dark-400 hover:text-white'}`}
-            >
-              Planner
-            </button>
-            <button
-              onClick={() => setView('credentials')}
-              className={`px-3 py-1.5 rounded-md text-sm transition ${view === 'credentials' ? 'bg-primary-600 text-white' : 'text-dark-400 hover:text-white'}`}
-            >
-              Credentials
-            </button>
-            <button
-              onClick={() => setView('gpa')}
-              className={`px-3 py-1.5 rounded-md text-sm transition ${view === 'gpa' ? 'bg-primary-600 text-white' : 'text-dark-400 hover:text-white'}`}
-            >
-              GPA
-            </button>
-            <button
-              onClick={() => setView('assessments')}
-              className={`px-3 py-1.5 rounded-md text-sm transition ${view === 'assessments' ? 'bg-primary-600 text-white' : 'text-dark-400 hover:text-white'}`}
-            >
-              Assessments
-            </button>
-            <button
-              onClick={() => setView('flow')}
-              className={`px-3 py-1.5 rounded-md text-sm transition ${view === 'flow' ? 'bg-primary-600 text-white' : 'text-dark-400 hover:text-white'}`}
-            >
-              Flow
-            </button>
-          </div>
-          {/* Chat widget available in bottom-right corner */}
-        </div>
+        ))}
+        {/* Chat widget available in bottom-right corner */}
       </div>
 
       <CatalogStatus />
 
       {summary && (
-        <div className="bg-dark-800 border border-dark-700 rounded-xl p-4">
-          <div className="flex items-center gap-6">
-            <div>
-              <p className="text-dark-400 text-sm">Overall Progress</p>
-              <p className="text-white text-xl font-bold">{summary.overall_percentage}%</p>
-            </div>
-            <div className="flex-1 h-3 bg-dark-700 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-primary-500 rounded-full transition-all"
-                style={{ width: `${summary.overall_percentage}%` }}
-              />
-            </div>
-            <div className="text-right">
-              <p className="text-dark-400 text-sm">Credits</p>
-              <p className="text-white font-medium">{summary.total_credits_completed} / {summary.total_credits_required}</p>
-            </div>
+        <Card className="flex flex-col gap-5 sm:flex-row sm:items-center sm:gap-10">
+          <Stat
+            label="Overall progress"
+            value={`${summary.overall_percentage}%`}
+            className="shrink-0"
+          />
+          <div className="flex-1">
+            <ProgressBar value={summary.overall_percentage} />
           </div>
-        </div>
+          <Stat
+            label="Credits"
+            value={summary.total_credits_completed}
+            unit={`/ ${summary.total_credits_required}`}
+            className="shrink-0"
+          />
+        </Card>
       )}
 
       {view === 'courses' ? (
@@ -277,27 +262,29 @@ export default function DegreePage() {
         />
       ) : view === 'buckets' ? (
         <div className="space-y-4">
-          <div className="flex justify-end">
-            <button
-              onClick={() => setReqModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 hover:bg-primary-500 text-white text-sm font-medium rounded-lg transition"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add requirement
-            </button>
-          </div>
+          {requirements.length > 0 && (
+            <div className="flex justify-end">
+              <Button variant="secondary" onClick={() => setReqModalOpen(true)}>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add requirement
+              </Button>
+            </div>
+          )}
           {requirements.map(req => (
             <RequirementBucketCard key={req.id} requirement={req} courses={courses} />
           ))}
           {requirements.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-dark-400">No degree requirements set up yet.</p>
-              <p className="text-dark-500 text-sm mt-2">
-                Add one with the button above, or use the chat widget for help setting up your degree.
+            <Card className="text-center py-14">
+              <p className="font-display text-2xl text-dark-50">No requirements yet</p>
+              <p className="text-dark-400 text-sm mt-2 max-w-md mx-auto">
+                Map out your degree's requirement buckets to watch progress build toward each one — or ask the chat widget to set them up for you.
               </p>
-            </div>
+              <div className="mt-6">
+                <Button variant="accent" onClick={() => setReqModalOpen(true)}>Add your first requirement</Button>
+              </div>
+            </Card>
           )}
         </div>
       ) : view === 'credentials' ? (
@@ -310,8 +297,8 @@ export default function DegreePage() {
       ) : view === 'assessments' ? (
         <div className="space-y-4">
           {/* Course selector */}
-          <div className="bg-dark-800 border border-dark-700 rounded-xl p-4">
-            <p className="text-dark-400 text-sm mb-3">Select a course to view or upload assessments:</p>
+          <Card>
+            <p className="eyebrow mb-3">Select a course to view or upload assessments</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {courses.map(c => (
                 <button
@@ -319,8 +306,8 @@ export default function DegreePage() {
                   onClick={() => setSelectedCourseId(selectedCourseId === c.id ? null : c.id)}
                   className={`text-left px-3 py-2 rounded-lg border text-sm transition-all ${
                     selectedCourseId === c.id
-                      ? 'border-primary-500 bg-primary-500/10 text-white'
-                      : 'border-dark-700 hover:border-dark-600 text-dark-300 hover:text-white'
+                      ? 'border-primary-500 bg-primary-500/10 text-dark-50'
+                      : 'border-dark-600 hover:border-dark-500 text-dark-300 hover:text-dark-50'
                   }`}
                 >
                   <span className="font-medium">{c.course_code}</span>
@@ -329,15 +316,18 @@ export default function DegreePage() {
               ))}
             </div>
             {courses.length === 0 && (
-              <p className="text-dark-500 text-sm text-center py-4">No courses added yet.</p>
+              <div className="text-center py-8">
+                <p className="font-display text-xl text-dark-50">Nothing to grade yet</p>
+                <p className="text-dark-400 text-sm mt-1.5">Add courses to start tracking assessments and weighted grades.</p>
+              </div>
             )}
-          </div>
+          </Card>
 
           {/* Assessments panel for selected course */}
           {selectedCourseId && (
-            <div className="bg-dark-800 border border-dark-700 rounded-xl p-4">
+            <Card>
               <AssessmentsPanel course={courses.find(c => c.id === selectedCourseId)} />
-            </div>
+            </Card>
           )}
         </div>
       ) : view === 'planner' ? (
@@ -362,8 +352,8 @@ export default function DegreePage() {
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setImportOpen(false); setParsedData(null); }} />
           <div className="relative bg-dark-800 border border-dark-700 rounded-xl p-6 w-full max-w-4xl mx-4 shadow-2xl max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-white">Import Degree Document</h3>
-              <button onClick={() => { setImportOpen(false); setParsedData(null); }} className="text-dark-400 hover:text-white transition-colors">&#x2715;</button>
+              <h3 className="font-display text-2xl text-dark-50">Import Degree Document</h3>
+              <button onClick={() => { setImportOpen(false); setParsedData(null); }} className="text-dark-400 hover:text-dark-50 transition-colors">&#x2715;</button>
             </div>
             {parsedData ? (
               <ParsedDataReview

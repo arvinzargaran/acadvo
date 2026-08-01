@@ -19,7 +19,7 @@ export default function MilestoneItem({ milestone, onUpdate }) {
           })}
           className="rounded border-dark-600 bg-dark-800 text-primary-600 focus:ring-primary-500"
         />
-        <span className={`text-sm ${milestone.status === 'complete' ? 'text-dark-400 line-through' : 'text-white'}`}>
+        <span className={`text-sm ${milestone.status === 'complete' ? 'text-dark-400 line-through' : 'text-dark-50'}`}>
           {milestone.title}
         </span>
       </div>
@@ -27,7 +27,7 @@ export default function MilestoneItem({ milestone, onUpdate }) {
         {milestone.target_date && (
           <span className="text-dark-400 text-xs">{milestone.target_date}</span>
         )}
-        <Badge color={statusColors[milestone.status]}>{milestone.status}</Badge>
+        <Badge color={statusColors[milestone.status]} variant="label" dot>{milestone.status}</Badge>
       </div>
     </div>
   );

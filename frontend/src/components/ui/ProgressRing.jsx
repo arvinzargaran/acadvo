@@ -52,7 +52,7 @@ export default function ProgressRing({
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-2xl font-bold text-white">
+        <span className="font-display tabular-nums text-2xl font-bold text-white">
           {Math.round(animatedValue)}%
         </span>
         {label && (

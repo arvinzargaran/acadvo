@@ -38,15 +38,15 @@ export default function ChatInput({ onSend, disabled = false, placeholder = 'Typ
         placeholder={placeholder}
         disabled={disabled}
         rows={1}
-        className="flex-1 resize-none bg-dark-800 border border-dark-600 text-white rounded-xl px-4 py-3
+        className="flex-1 resize-none bg-dark-800 border border-dark-600 text-dark-50 rounded-xl px-4 py-3
                    placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-primary-600 focus:border-transparent
                    disabled:opacity-50 disabled:cursor-not-allowed"
       />
       <button
         onClick={handleSend}
         disabled={isEmpty || disabled}
-        className="flex-shrink-0 bg-primary-600 hover:bg-primary-700 text-white rounded-xl px-4 py-3
-                   font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        className="flex-shrink-0 btn-accent rounded-xl px-4 py-3
+                   font-medium transition-transform hover:scale-[1.03] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"

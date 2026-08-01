@@ -29,21 +29,24 @@
   --paper-flat: #241E15;
 }
 
-/* Dark theme — "Soft dim": a neutral mid-gray scale, deliberately kept off
-   pure black/white so the app doesn't read as a stark on/off switch. */
+/* Dark theme — "Warm ink": a warm-charcoal scale with genuine elevation.
+   Deliberately kept off pure black, but with clear steps between the app
+   background, chrome, and raised cards so surfaces read as layered rather
+   than flat. A faint warm cast ties it to the amber accent and the paper
+   theme's character. */
 :root.dark {
-  --color-dark-950: #2B2B2B; /* app background              */
-  --color-dark-900: #303030; /* chrome: sidebar / topbar    */
-  --color-dark-800: #363636; /* raised cards                */
-  --color-dark-700: #404040; /* inputs / hover              */
-  --color-dark-600: #4A4A4A; /* borders                     */
-  --color-dark-500: #5C5C5C; /* hairlines / faint           */
-  --color-dark-400: #ADADAD; /* muted / labels              */
-  --color-dark-300: #C6C6C6; /* secondary text              */
-  --color-dark-200: #DCDCDC;
-  --color-dark-100: #EAEAEA;
-  --color-dark-50:  #F2F2F2; /* ink (primary text)          */
-  --text-primary:   #F2F2F2;
+  --color-dark-950: #1B1A17; /* app background (deepest)    */
+  --color-dark-900: #201E1A; /* chrome: sidebar / topbar    */
+  --color-dark-800: #2A2824; /* raised cards (clearly above bg) */
+  --color-dark-700: #35322D; /* inputs / hover              */
+  --color-dark-600: #423E38; /* borders                     */
+  --color-dark-500: #565049; /* hairlines / faint           */
+  --color-dark-400: #A8A199; /* muted / labels (AA on bg)   */
+  --color-dark-300: #C7C1B8; /* secondary text              */
+  --color-dark-200: #DCD7CE;
+  --color-dark-100: #EBE7DF;
+  --color-dark-50:  #F5F2EC; /* ink (primary text, warm white) */
+  --text-primary:   #F5F2EC;
 }
 
 html {
@@ -257,6 +260,50 @@ textarea:focus-visible,
 .icon-chip {
   background: linear-gradient(160deg, rgba(255, 138, 0, 0.16), rgba(255, 138, 0, 0.05));
   border: 1px solid rgba(255, 138, 0, 0.22);
+}
+
+/* ---- UI primitives -------------------------------------------------------- */
+
+/* Warm amber gradient fill for the Button `accent` variant. */
+.btn-accent {
+  background-image: linear-gradient(135deg, #FF8A00, #F07E00);
+  color: #fff;
+  box-shadow: 0 1px 2px rgb(240 126 0 / 0.35), 0 4px 12px -2px rgb(240 126 0 / 0.3);
+}
+.btn-accent:hover {
+  background-image: linear-gradient(135deg, #FF9A1F, #F58600);
+}
+
+/* Editorial eyebrow — uppercase, tracked, muted-brand label. */
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-dark-400);
+}
+
+/* Skeleton loading shimmer — a highlight sweeps left→right over the muted base. */
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.skeleton-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.35), transparent);
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+:root.dark .skeleton-shimmer::after {
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.07), transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer::after { animation: none; }
 }
 
 /* ---- Editorial typography refinements ------------------------------------ */

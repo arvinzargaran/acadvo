@@ -4,6 +4,8 @@ import ProjectCard from '../components/projects/ProjectCard';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
+import PageHeader from '../components/ui/PageHeader';
+import Stat from '../components/ui/Stat';
 import { listProjects, createProject, updateProject, deleteProject, updateMilestone } from '../api/projects';
 import { getErrorMessage } from '../utils/errors';
 
@@ -100,9 +102,18 @@ export default function ProjectsPage() {
     );
   }
 
+  const deployedCount = projects.filter(p => p.status === 'deployed' || p.status === 'interview_ready').length;
+  const inProgressCount = projects.filter(p => p.status === 'in_progress').length;
+  const isEmpty = projects.length === 0;
+
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-white">Projects</h1>
+    <div className="space-y-8">
+      <PageHeader
+        eyebrow="PROJECTS"
+        title="Projects"
+        subtitle="Build the portfolio that proves what you can ship."
+        actions={<Button variant="accent" onClick={openCreate}>New project</Button>}
+      />
       {error && (
         <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-4 py-3 rounded-lg flex items-center justify-between">
           {error}
@@ -110,6 +121,28 @@ export default function ProjectsPage() {
         </div>
       )}
 
+      {!isEmpty && (
+        <div className="grid grid-cols-3 gap-4 max-w-md">
+          <Stat value={projects.length} label="Projects" />
+          <Stat value={inProgressCount} label="In Progress" />
+          <Stat value={deployedCount} label="Shipped" />
+        </div>
+      )}
+
+      {isEmpty ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <span className="icon-chip w-16 h-16 rounded-2xl flex items-center justify-center text-primary-500 mb-5">
+            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+            </svg>
+          </span>
+          <h2 className="font-display text-2xl tracking-tight text-dark-50">Nothing shipped yet</h2>
+          <p className="text-dark-400 text-sm mt-2 max-w-sm">
+            Every strong portfolio starts with one project. Frame the problem, set milestones, and start building.
+          </p>
+          <Button variant="accent" onClick={openCreate} className="mt-6">Create your first project</Button>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {projects.map((p, i) => (
           <ProjectCard
@@ -128,16 +161,17 @@ export default function ProjectsPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45, delay: projects.length * 0.08, ease: [0.25, 0.46, 0.45, 0.94] }}
           onClick={openCreate}
-          className="flex flex-col items-center justify-center gap-3 min-h-[240px] border-2 border-dashed border-white/20 rounded-2xl bg-white/[0.02] transition-colors duration-300 hover:bg-white/5 cursor-pointer group"
+          className="flex flex-col items-center justify-center gap-3 min-h-[240px] border-2 border-dashed border-dark-600 rounded-2xl bg-dark-800/40 transition-colors duration-300 hover:bg-dark-800 cursor-pointer group"
         >
-          <div className="w-12 h-12 rounded-full border-2 border-white/15 flex items-center justify-center group-hover:border-white/40 group-hover:bg-white/5 transition-all">
-            <svg className="w-6 h-6 text-white/30 group-hover:text-white/60 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="w-12 h-12 rounded-full border-2 border-dark-500 flex items-center justify-center group-hover:border-primary-500/50 group-hover:bg-primary-500/5 transition-all">
+            <svg className="w-6 h-6 text-dark-400 group-hover:text-primary-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
           </div>
-          <span className="text-white/30 text-sm font-medium group-hover:text-white/60 transition-colors">Add New Project</span>
+          <span className="text-dark-400 text-sm font-medium group-hover:text-dark-200 transition-colors">Add New Project</span>
         </motion.button>
       </div>
+      )}
 
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editingProject ? 'Edit Project' : 'New Project'}>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -149,7 +183,7 @@ export default function ProjectsPage() {
               <select
                 value={form.priority}
                 onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
-                className="w-full bg-dark-800 border border-dark-600 text-white rounded-lg px-3 py-2"
+                className="w-full bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-3 py-2"
               >
                 <option value={1}>1 — High</option>
                 <option value={2}>2 — Medium</option>
@@ -164,7 +198,7 @@ export default function ProjectsPage() {
             <textarea
               value={form.product_framing}
               onChange={e => setForm(f => ({ ...f, product_framing: e.target.value }))}
-              className="w-full bg-dark-800 border border-dark-600 text-white rounded-lg px-3 py-2 h-20 resize-none"
+              className="w-full bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-3 py-2 h-20 resize-none"
               placeholder="What problem does it solve? Who is the user?"
             />
           </div>

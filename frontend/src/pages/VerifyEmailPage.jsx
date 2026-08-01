@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { verifyEmail } from '../api/auth';
+import Card from '../components/ui/Card';
 
 export default function VerifyEmailPage() {
   const [searchParams] = useSearchParams();
@@ -17,24 +18,26 @@ export default function VerifyEmailPage() {
   }, [token]);
 
   const messages = {
-    verifying: { title: 'Verifying your email…', body: 'One moment.', color: 'text-gray-300' },
-    success: { title: 'Email verified', body: 'Your email address is confirmed.', color: 'text-green-400' },
-    error: { title: 'Verification failed', body: 'This link is invalid or has expired. You can request a new one from Settings.', color: 'text-red-400' },
-    notoken: { title: 'Missing token', body: 'This verification link is incomplete.', color: 'text-red-400' },
+    verifying: { title: 'Verifying your email…', body: 'One moment.', color: 'text-dark-200', eyebrow: 'Please wait' },
+    success: { title: 'Email verified', body: 'Your email address is confirmed.', color: 'text-green-600 dark:text-green-400', eyebrow: 'All set' },
+    error: { title: 'Verification failed', body: 'This link is invalid or has expired. You can request a new one from Settings.', color: 'text-red-600 dark:text-red-400', eyebrow: 'Something went wrong' },
+    notoken: { title: 'Missing token', body: 'This verification link is incomplete.', color: 'text-red-600 dark:text-red-400', eyebrow: 'Something went wrong' },
   };
   const m = messages[status];
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-dark-950">
-      <div className="w-full max-w-sm text-center">
-        <h1 className="text-3xl font-bold font-display text-primary-600 mb-8">Acadvo</h1>
-        <div className="bg-white/5 border border-white/10 rounded-xl p-8 shadow-sm space-y-3">
-          <h2 className={`text-lg font-semibold ${m.color}`}>{m.title}</h2>
-          <p className="text-gray-400 text-sm">{m.body}</p>
-          <Link to="/dashboard" className="inline-block mt-2 text-primary-600 hover:text-primary-500 hover:underline text-sm font-medium">
+    <div className="relative min-h-screen flex items-center justify-center px-4 bg-dark-950 overflow-hidden">
+      <div className="aurora-warm absolute inset-0 pointer-events-none" />
+      <div className="relative w-full max-w-sm text-center">
+        <Link to="/" className="inline-block text-2xl font-bold font-display text-primary-600 hover:opacity-80 transition-opacity mb-8">Acadvo</Link>
+        <Card className="space-y-3">
+          <p className="eyebrow">{m.eyebrow}</p>
+          <h2 className={`font-display text-2xl tracking-tight ${m.color}`}>{m.title}</h2>
+          <p className="text-dark-400 text-sm">{m.body}</p>
+          <Link to="/dashboard" className="inline-block mt-2 text-primary-600 dark:text-primary-400 hover:underline text-sm font-medium">
             Go to dashboard
           </Link>
-        </div>
+        </Card>
       </div>
     </div>
   );

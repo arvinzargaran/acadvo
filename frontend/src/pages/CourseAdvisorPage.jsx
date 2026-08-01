@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Skeleton from '../components/ui/Skeleton';
 import Spinner from '../components/ui/Spinner';
+import PageHeader from '../components/ui/PageHeader';
+import Badge from '../components/ui/Badge';
 import {
   searchCourses,
   listRecommendations,
@@ -22,10 +24,11 @@ const PRIORITY_COLORS = {
   low: 'border-dark-600 bg-dark-800/50',
 };
 
-const PRIORITY_BADGES = {
-  high: 'bg-green-500/20 text-green-400',
-  medium: 'bg-yellow-500/20 text-yellow-400',
-  low: 'bg-dark-600 text-dark-400',
+// Priority → shared Badge color, keeping the green/yellow/gray semantics.
+const PRIORITY_BADGE_COLORS = {
+  high: 'green',
+  medium: 'yellow',
+  low: 'gray',
 };
 
 function buildSemesters(gradYear) {
@@ -63,7 +66,7 @@ export default function CourseAdvisorPage() {
   const [includeWinters, setIncludeWinters] = useState(true);
   const abortRef = useRef(null);
 
-  const semesters = buildSemesters(user?.expected_graduation_year);
+  const semesters = useMemo(() => buildSemesters(user?.expected_graduation_year), [user?.expected_graduation_year]);
 
   useEffect(() => {
     if (!selectedSemester && semesters.length) {
@@ -198,13 +201,17 @@ export default function CourseAdvisorPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-bold text-white">Course Advisor</h1>
+      <PageHeader
+        eyebrow="COURSE ADVISOR"
+        title="Course Advisor"
+        subtitle="Plan your path from now to graduation — grounded in your requirements, catalog, and career goals."
+      />
 
       {/* Section 0: AI Full Semester Plan */}
       <Card gradient>
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
           <div>
-            <h2 className="text-white font-semibold">AI Semester Plan</h2>
+            <h2 className="font-display text-xl text-dark-50">AI Semester Plan</h2>
             <p className="text-dark-400 text-sm mt-1">
               Generate a complete semester-by-semester course plan from now until graduation.
               The AI searches {universityName}'s catalog, considers prerequisites, balances workload, and aligns with your career goals.
@@ -370,7 +377,7 @@ export default function CourseAdvisorPage() {
 
       {/* Section 1: Course Search */}
       <Card>
-        <h2 className="text-white font-semibold mb-3">Course Search</h2>
+        <h2 className="font-display text-xl text-dark-50 mb-3">Course Search</h2>
         <form onSubmit={handleSearch} className="flex gap-3">
           <input
             value={searchQuery}
@@ -410,7 +417,7 @@ export default function CourseAdvisorPage() {
                         <span className="text-dark-300 text-sm">— {course.course_name}</span>
                         <span className="text-dark-500 text-xs">{course.credits} credits</span>
                         {course.in_plan && (
-                          <span className="bg-primary-500/20 text-primary-400 text-xs px-2 py-0.5 rounded-full">In your plan</span>
+                          <Badge color="blue" dot>In your plan</Badge>
                         )}
                       </div>
                       {course.description && (
@@ -468,7 +475,7 @@ export default function CourseAdvisorPage() {
       <Card gradient>
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
-            <h2 className="text-white font-semibold">Get Personalized Recommendations</h2>
+            <h2 className="font-display text-xl text-dark-50">Get Personalized Recommendations</h2>
             <p className="text-dark-400 text-sm mt-1">
               Your advisor will review your remaining degree requirements, career goals, and current plan — then suggest the best courses to take next.
             </p>
@@ -534,9 +541,11 @@ export default function CourseAdvisorPage() {
             ))}
           </div>
         ) : (
-          <div className="mt-6 text-center py-8">
-            <p className="text-dark-400 text-sm">No recommendations yet for {selectedSemester}</p>
-            <p className="text-dark-500 text-xs mt-1">Click the button above to get personalized suggestions from your AI advisor.</p>
+          <div className="mt-6 text-center py-10">
+            <p className="font-display text-2xl text-dark-50">Nothing lined up for {selectedSemester} yet</p>
+            <p className="text-dark-400 text-sm mt-2 max-w-sm mx-auto">
+              Generate a set above and your advisor will weigh your requirements, plan, and career goals to suggest what to take.
+            </p>
           </div>
         )}
       </Card>
@@ -544,7 +553,7 @@ export default function CourseAdvisorPage() {
       {/* Section 3: All Saved Recommendations */}
       {savedRecs.length > 0 && (
         <Card>
-          <h2 className="text-white font-semibold mb-4">Saved Recommendations</h2>
+          <h2 className="font-display text-xl text-dark-50 mb-4">Saved Recommendations</h2>
           <div className="space-y-4">
             {Object.entries(activeBySemester).map(([semester, recs]) => (
               <div key={semester}>
@@ -571,19 +580,19 @@ export default function CourseAdvisorPage() {
 
 function RecommendationCard({ rec, onAccept, onDismiss, compact = false }) {
   const borderClass = PRIORITY_COLORS[rec.priority] || PRIORITY_COLORS.medium;
-  const badgeClass = PRIORITY_BADGES[rec.priority] || PRIORITY_BADGES.medium;
+  const priorityColor = PRIORITY_BADGE_COLORS[rec.priority] || PRIORITY_BADGE_COLORS.medium;
 
   return (
     <div className={`border rounded-xl p-4 ${borderClass} transition-all`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-white font-medium">{rec.course_code}</span>
+            <span className="text-dark-50 font-medium">{rec.course_code}</span>
             <span className="text-dark-300 text-sm">{rec.course_name}</span>
             <span className="text-dark-500 text-xs">{rec.credits} credits</span>
-            <span className={`text-xs px-2 py-0.5 rounded-full ${badgeClass}`}>{rec.priority}</span>
+            <Badge color={priorityColor} variant="label">{rec.priority}</Badge>
             {rec.requirement_bucket && (
-              <span className="text-xs text-dark-500 bg-dark-800 px-2 py-0.5 rounded-full">{rec.requirement_bucket}</span>
+              <Badge color="gray" variant="label">{rec.requirement_bucket}</Badge>
             )}
           </div>
           {!compact && (

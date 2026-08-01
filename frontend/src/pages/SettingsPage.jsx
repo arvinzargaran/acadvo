@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
+import PageHeader from '../components/ui/PageHeader';
 import client from '../api/client';
 import { deleteAccount, changePassword, getCalendarFeed, regenerateCalendarFeed } from '../api/users';
 import { resendVerification } from '../api/auth';
@@ -142,10 +143,17 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl space-y-6">
-      <h1 className="text-2xl font-bold text-white">Settings</h1>
+      <PageHeader
+        eyebrow="Account"
+        title="Settings"
+        subtitle="Manage your profile, security, and how Acadvo syncs with your world."
+      />
 
       <Card>
-        <h2 className="text-white font-semibold mb-4">Profile</h2>
+        <div className="mb-5">
+          <p className="eyebrow">Your details</p>
+          <h2 className="font-display text-xl text-dark-50 mt-1">Profile</h2>
+        </div>
         <form onSubmit={handleSave} className="space-y-4">
           <Input label="Full Name" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} />
           <div className="grid grid-cols-2 gap-4">
@@ -161,11 +169,11 @@ export default function SettingsPage() {
             <Input label="City" value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-sm text-dark-300 mb-1">Career Target</label>
+            <label className="block text-sm font-medium text-dark-300 mb-1">Career Target</label>
             <textarea
               value={form.career_target}
               onChange={e => setForm(f => ({ ...f, career_target: e.target.value }))}
-              className="w-full bg-dark-800 border border-dark-600 text-white rounded-lg px-3 py-2 h-20 resize-none"
+              className="w-full bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-3 py-2 h-20 text-sm placeholder-dark-400 focus:border-primary-500 transition-colors resize-none"
               placeholder="e.g. SWE internship → Technical Product Manager"
             />
           </div>
@@ -178,7 +186,10 @@ export default function SettingsPage() {
       </Card>
 
       <Card>
-        <h2 className="text-white font-semibold mb-4">Change Password</h2>
+        <div className="mb-5">
+          <p className="eyebrow">Security</p>
+          <h2 className="font-display text-xl text-dark-50 mt-1">Change Password</h2>
+        </div>
         <form onSubmit={handlePasswordChange} className="space-y-4">
           <Input label="Current Password" type="password" value={pwForm.current_password} onChange={e => setPwForm(f => ({ ...f, current_password: e.target.value }))} required />
           <Input label="New Password" type="password" value={pwForm.new_password} onChange={e => setPwForm(f => ({ ...f, new_password: e.target.value }))} required minLength={8} placeholder="Min 8 characters" />
@@ -192,7 +203,10 @@ export default function SettingsPage() {
       </Card>
 
       <Card>
-        <h2 className="text-white font-semibold mb-2">Calendar Sync</h2>
+        <div className="mb-3">
+          <p className="eyebrow">Integrations</p>
+          <h2 className="font-display text-xl text-dark-50 mt-1">Calendar Sync</h2>
+        </div>
         <p className="text-dark-300 text-sm mb-4">
           Subscribe to a live feed of your deadlines, milestones, and assessments from Google Calendar,
           Apple Calendar, or Outlook. The calendar app checks this link periodically and stays in sync automatically.
@@ -209,7 +223,7 @@ export default function SettingsPage() {
                 readOnly
                 value={feedUrl}
                 onFocus={e => e.target.select()}
-                className="flex-1 bg-dark-800 border border-dark-600 text-white text-sm rounded-lg px-3 py-2 truncate"
+                className="flex-1 bg-dark-800 border border-dark-600 text-dark-50 text-sm rounded-lg px-3 py-2 truncate"
               />
               <Button variant="secondary" onClick={handleCopyFeed}>{feedCopied ? 'Copied!' : 'Copy'}</Button>
             </div>
@@ -241,7 +255,10 @@ export default function SettingsPage() {
       </Card>
 
       <Card>
-        <h2 className="text-white font-semibold mb-2">Email Verification</h2>
+        <div className="mb-3">
+          <p className="eyebrow">Account status</p>
+          <h2 className="font-display text-xl text-dark-50 mt-1">Email Verification</h2>
+        </div>
         {user?.email_verified ? (
           <p className="text-green-400 text-sm flex items-center gap-2">
             <span>✓</span> Your email address is verified.
@@ -249,7 +266,7 @@ export default function SettingsPage() {
         ) : (
           <div className="space-y-3">
             <p className="text-dark-300 text-sm">
-              Your email <span className="text-white">{user?.email}</span> isn't verified yet. Check
+              Your email <span className="text-dark-50 font-medium">{user?.email}</span> isn't verified yet. Check
               your inbox for the verification link, or resend it.
             </p>
             <div className="flex items-center gap-3">
@@ -263,8 +280,11 @@ export default function SettingsPage() {
         )}
       </Card>
 
-      <Card className="border-red-500/30">
-        <h2 className="text-red-400 font-semibold mb-2">Danger Zone</h2>
+      <Card className="ring-red-500/30">
+        <div className="mb-3">
+          <p className="eyebrow text-red-500 dark:text-red-400">Irreversible</p>
+          <h2 className="font-display text-xl text-red-500 dark:text-red-400 mt-1">Danger Zone</h2>
+        </div>
         {!showDelete ? (
           <Button variant="danger" onClick={() => setShowDelete(true)}>Delete my account</Button>
         ) : (

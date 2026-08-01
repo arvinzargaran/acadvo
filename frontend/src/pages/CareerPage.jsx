@@ -9,6 +9,8 @@ import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Skeleton from '../components/ui/Skeleton';
+import PageHeader from '../components/ui/PageHeader';
+import Stat from '../components/ui/Stat';
 import { getErrorMessage } from '../utils/errors';
 import { listCareerTargets, createCareerTarget, updateCareerTarget, deleteCareerTarget, listTimelineEvents } from '../api/career';
 
@@ -177,42 +179,41 @@ export default function CareerPage() {
   // Empty state — AI-driven prompt
   if (isEmpty) {
     return (
-      <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-white">Career</h1>
+      <div className="space-y-8">
+        <PageHeader eyebrow="CAREER" title="Career" />
 
-        <div className="flex flex-col items-center justify-center py-16">
-          <div className="bg-primary-500/10 border border-dark-700 rounded-2xl p-10 max-w-lg text-center space-y-5">
-            <div className="mx-auto w-16 h-16 rounded-full bg-primary-500 flex items-center justify-center">
-              <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <div>
-              <h2 className="text-xl font-semibold text-white">Let your AI advisor build your career plan</h2>
-              <p className="text-dark-400 text-sm mt-2">
-                Based on your profile, degree progress, and projects, your AI advisor will suggest target companies, roles, and a timeline to get there.
+        <div className="flex flex-col items-center justify-center py-12">
+          <Card className="max-w-lg text-center" gradient>
+            <div className="space-y-5">
+              <div className="icon-chip mx-auto w-16 h-16 rounded-2xl flex items-center justify-center text-primary-500">
+                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="font-display text-2xl tracking-tight text-dark-50">Let your advisor chart the path</h2>
+                <p className="text-dark-400 text-sm mt-2 leading-relaxed">
+                  Based on your profile, degree progress, and projects, your AI advisor suggests target companies, roles, and a timeline to get there.
+                </p>
+              </div>
+              <Button variant="accent" onClick={() => setAiChatOpen(true)}>
+                Build my career plan
+              </Button>
+              <p className="text-dark-500 text-xs">
+                or{' '}
+                <button
+                  onClick={() => { setEditing(null); setForm({ company_name: '', role_type: '', location: '', target_term: '', status: 'researching', notes: '' }); setShowModal(true); }}
+                  className="text-primary-500 hover:text-primary-400 transition-colors"
+                >
+                  add a target manually
+                </button>
               </p>
             </div>
-            <Button
-              onClick={() => setAiChatOpen(true)}
-              className="bg-primary-600 hover:bg-primary-700 transition-all"
-            >
-              Build My Career Plan
-            </Button>
-            <p className="text-dark-500 text-xs">
-              or{' '}
-              <button
-                onClick={() => { setEditing(null); setForm({ company_name: '', role_type: '', location: '', target_term: '', status: 'researching', notes: '' }); setShowModal(true); }}
-                className="text-primary-400 hover:text-primary-300 transition-colors"
-              >
-                add a target manually
-              </button>
-            </p>
-          </div>
+          </Card>
 
           {/* Quick-add recommendations in empty state */}
           <div className="mt-8 max-w-lg mx-auto w-full">
-            <p className="text-dark-400 text-xs font-medium uppercase tracking-wide mb-2 text-center">Or quick-add a top employer</p>
+            <p className="eyebrow mb-2 text-center">Or quick-add a top employer</p>
             <div className="flex flex-wrap justify-center gap-2">
               {RECOMMENDED_TARGETS.map((rec) => {
                 const alreadyAdded = addedCompanies.has(rec.company_name);
@@ -222,7 +223,7 @@ export default function CareerPage() {
                     key={rec.company_name}
                     onClick={() => !alreadyAdded && handleAddRecommended(rec)}
                     disabled={alreadyAdded || isAdding}
-                    className={`bg-white/5 border rounded-xl px-3 py-1.5 text-sm flex items-center gap-1.5 transition-all ${alreadyAdded ? 'border-emerald-500/30 text-emerald-500 cursor-default' : 'border-white/10 text-white/70 hover:border-white/25 hover:text-white'} disabled:opacity-60`}
+                    className={`bg-dark-800 border rounded-xl px-3 py-1.5 text-sm flex items-center gap-1.5 transition-all ${alreadyAdded ? 'border-green-500/30 text-green-500 cursor-default' : 'border-dark-600 text-dark-300 hover:border-dark-500 hover:text-dark-50'} disabled:opacity-60`}
                   >
                     {alreadyAdded ? (
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
@@ -266,42 +267,51 @@ export default function CareerPage() {
           <button onClick={() => setError('')} className="ml-3 hover:text-red-300">✕</button>
         </div>
       )}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold text-white">Career</h1>
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={() => setAiChatOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition-all"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-            </svg>
-            AI Career Advisor
-          </button>
-          <div className="flex bg-dark-800 rounded-lg p-0.5">
-            <button
-              onClick={() => setView('pipeline')}
-              className={`px-3 py-1.5 rounded-md text-sm transition ${view === 'pipeline' ? 'bg-primary-600 text-white' : 'text-dark-400 hover:text-white'}`}
-            >
-              Pipeline
-            </button>
-            <button
-              onClick={() => setView('list')}
-              className={`px-3 py-1.5 rounded-md text-sm transition ${view === 'list' ? 'bg-primary-600 text-white' : 'text-dark-400 hover:text-white'}`}
-            >
-              List
-            </button>
-          </div>
-          <Button variant="secondary" onClick={() => { setEditing(null); setForm({ company_name: '', role_type: '', location: '', target_term: '', status: 'researching', notes: '' }); setShowModal(true); }}>
-            Add target
-          </Button>
-        </div>
+      <PageHeader
+        eyebrow="CAREER"
+        title="Career"
+        subtitle="Track your target companies from first look to final offer."
+        actions={
+          <>
+            <Button variant="accent" onClick={() => setAiChatOpen(true)}>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+              </svg>
+              AI Advisor
+            </Button>
+            <div className="flex bg-dark-800 ring-1 ring-black/5 dark:ring-white/10 rounded-lg p-0.5">
+              <button
+                onClick={() => setView('pipeline')}
+                className={`px-3 py-1.5 rounded-md text-sm transition ${view === 'pipeline' ? 'bg-dark-50 text-dark-950' : 'text-dark-400 hover:text-dark-50'}`}
+              >
+                Pipeline
+              </button>
+              <button
+                onClick={() => setView('list')}
+                className={`px-3 py-1.5 rounded-md text-sm transition ${view === 'list' ? 'bg-dark-50 text-dark-950' : 'text-dark-400 hover:text-dark-50'}`}
+              >
+                List
+              </button>
+            </div>
+            <Button variant="secondary" onClick={() => { setEditing(null); setForm({ company_name: '', role_type: '', location: '', target_term: '', status: 'researching', notes: '' }); setShowModal(true); }}>
+              Add target
+            </Button>
+          </>
+        }
+      />
+
+      {/* Pipeline metrics */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <Stat value={targets.length} label="Targets" />
+        <Stat value={targets.filter(t => t.status === 'applied').length} label="Applied" />
+        <Stat value={targets.filter(t => t.status === 'interviewing').length} label="Interviewing" />
+        <Stat value={targets.filter(t => t.status === 'offer').length} label="Offers" />
       </div>
 
       {/* Recommended Tech Employers */}
       {RECOMMENDED_TARGETS.some(r => !addedCompanies.has(r.company_name)) && (
         <div>
-          <p className="text-dark-400 text-xs font-medium uppercase tracking-wide mb-2">Recommended Tech Employers (Toronto)</p>
+          <p className="eyebrow mb-2">Recommended Tech Employers (Toronto)</p>
           <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-hide">
             {RECOMMENDED_TARGETS.map((rec) => {
               const alreadyAdded = addedCompanies.has(rec.company_name);
@@ -309,14 +319,14 @@ export default function CareerPage() {
               return (
                 <div
                   key={rec.company_name}
-                  className="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 flex items-center gap-3 flex-shrink-0"
+                  className="bg-dark-800 border border-dark-600 rounded-xl px-4 py-2.5 flex items-center gap-3 flex-shrink-0"
                 >
                   <div>
-                    <p className="text-white text-sm font-medium leading-tight">{rec.company_name}</p>
-                    <p className="text-white/40 text-xs">{rec.role_type}</p>
+                    <p className="text-dark-50 text-sm font-medium leading-tight">{rec.company_name}</p>
+                    <p className="text-dark-400 text-xs">{rec.role_type}</p>
                   </div>
                   {alreadyAdded ? (
-                    <span className="text-emerald-500 text-xs font-medium flex items-center gap-1 flex-shrink-0">
+                    <span className="text-green-500 text-xs font-medium flex items-center gap-1 flex-shrink-0">
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                       Added
                     </span>
@@ -324,7 +334,7 @@ export default function CareerPage() {
                     <button
                       onClick={() => handleAddRecommended(rec)}
                       disabled={isAdding}
-                      className="text-primary-400 hover:text-primary-300 text-xs font-medium flex items-center gap-1 flex-shrink-0 disabled:opacity-50 transition-colors"
+                      className="text-primary-500 hover:text-primary-400 text-xs font-medium flex items-center gap-1 flex-shrink-0 disabled:opacity-50 transition-colors"
                     >
                       {isAdding ? (
                         <div className="animate-spin rounded-full h-3 w-3 border-b border-primary-400" />
@@ -346,7 +356,14 @@ export default function CareerPage() {
           <ApplicationPipeline targets={targets} onEdit={handleEdit} onStatusChange={handleStatusChange} />
         ) : (
           <Card>
-            <h2 className="text-white font-semibold mb-4">Target Companies</h2>
+            <div className="flex items-center gap-3 mb-4">
+              <span className="icon-chip w-8 h-8 rounded-lg flex items-center justify-center text-primary-500">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0H5m14 0h2M5 21H3m4-14h2m-2 4h2m6-4h2m-2 4h2M9 21v-4a1 1 0 011-1h4a1 1 0 011 1v4" />
+                </svg>
+              </span>
+              <h2 className="font-display text-xl tracking-tight text-dark-50">Target Companies</h2>
+            </div>
             <div className="space-y-3">
               {targets.map(t => (
                 <TargetCard key={t.id} target={t} onEdit={handleEdit} onDelete={handleDelete} />
@@ -357,7 +374,14 @@ export default function CareerPage() {
 
         {events.length > 0 && (
           <Card>
-            <h2 className="text-white font-semibold mb-4">Timeline</h2>
+            <div className="flex items-center gap-3 mb-4">
+              <span className="icon-chip w-8 h-8 rounded-lg flex items-center justify-center text-primary-500">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z" />
+                </svg>
+              </span>
+              <h2 className="font-display text-xl tracking-tight text-dark-50">Timeline</h2>
+            </div>
             <CareerTimeline events={events} />
           </Card>
         )}
@@ -378,7 +402,7 @@ export default function CareerPage() {
             <select
               value={form.status}
               onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-              className="w-full bg-dark-800 border border-dark-600 text-white rounded-lg px-3 py-2"
+              className="w-full bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-3 py-2"
             >
               <option value="researching">Researching</option>
               <option value="applied">Applied</option>
@@ -392,7 +416,7 @@ export default function CareerPage() {
             <textarea
               value={form.notes}
               onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-              className="w-full bg-dark-800 border border-dark-600 text-white rounded-lg px-3 py-2 h-20 resize-none"
+              className="w-full bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-3 py-2 h-20 resize-none"
             />
           </div>
           {formError && <p className="text-red-400 text-sm">{formError}</p>}

@@ -9,7 +9,7 @@ export default function EventCard({ event, compact = false }) {
     return (
       <div className={`flex items-center gap-2 rounded-lg border ${s.border} bg-dark-800 px-2.5 py-1.5 transition hover:bg-dark-800/80`}>
         <div className={`w-1.5 h-1.5 rounded-full ${s.dotSolid} flex-shrink-0`} />
-        <span className="text-white text-xs font-medium truncate flex-1">{event.title}</span>
+        <span className="text-dark-50 text-xs font-medium truncate flex-1">{event.title}</span>
         {badge && (
           <span className={`text-[9px] px-1.5 py-0.5 rounded-full border ${badge.cls} flex-shrink-0`}>{badge.label}</span>
         )}
@@ -22,7 +22,7 @@ export default function EventCard({ event, compact = false }) {
       <div className="flex items-center gap-3">
         <div className={`w-1 h-8 rounded-full ${s.dot} flex-shrink-0`} />
         <div className="flex-1 min-w-0">
-          <p className="text-white text-sm font-medium truncate">{event.title}</p>
+          <p className="text-dark-50 text-sm font-medium truncate">{event.title}</p>
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
             <span className={`text-[10px] px-2 py-0.5 rounded-full border ${s.badge} capitalize`}>{event.category}</span>
             <span className="text-dark-500 text-[10px]">{event.type}</span>

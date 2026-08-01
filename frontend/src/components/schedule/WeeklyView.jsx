@@ -51,7 +51,7 @@ export default function WeeklyView({ events, weekOffset = 0 }) {
             <p className={`text-xs font-medium ${day.isToday ? 'text-emerald-400' : 'text-dark-400'}`}>
               {day.dayName}
             </p>
-            <p className={`text-lg font-bold mt-0.5 ${day.isToday ? 'text-white' : day.events.length > 0 ? 'text-dark-200' : 'text-dark-500'}`}>
+            <p className={`font-display tabular-nums text-lg mt-0.5 ${day.isToday ? 'text-dark-50' : day.events.length > 0 ? 'text-dark-200' : 'text-dark-500'}`}>
               {day.dayNum}
             </p>
             {day.events.length > 0 && (
@@ -76,7 +76,7 @@ export default function WeeklyView({ events, weekOffset = 0 }) {
           return (
             <div key={day.key}>
               <div className="flex items-baseline gap-2 mb-2">
-                <span className={`text-sm font-semibold ${day.isToday ? 'text-white' : 'text-dark-300'}`}>
+                <span className={`font-display text-base ${day.isToday ? 'text-dark-50' : 'text-dark-300'}`}>
                   {day.isToday ? 'Today' : day.dayName}
                 </span>
                 <span className="text-xs text-dark-500">{day.month} {day.dayNum}</span>
@@ -92,7 +92,10 @@ export default function WeeklyView({ events, weekOffset = 0 }) {
         })}
 
         {weekDays.every(d => d.events.length === 0) && (
-          <p className="text-dark-500 text-sm text-center py-6">No events this week</p>
+          <div className="text-center py-8">
+            <p className="font-display text-xl text-dark-50">A clear week</p>
+            <p className="text-dark-400 text-sm mt-1">Nothing scheduled — use the arrows to look ahead.</p>
+          </div>
         )}
       </div>
     </div>

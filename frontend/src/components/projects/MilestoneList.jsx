@@ -26,7 +26,7 @@ export default function MilestoneList({ milestones, onUpdate }) {
 
   return (
     <div className="space-y-1.5">
-      <p className="text-dark-400 text-xs font-medium">Milestones</p>
+      <p className="eyebrow">Milestones</p>
       {sorted.map(m => (
         <div
           key={m.id}
@@ -35,7 +35,7 @@ export default function MilestoneList({ milestones, onUpdate }) {
         >
           <div className="flex items-center gap-2">
             <span>{icons[m.status] || '⬜'}</span>
-            <span className={`text-sm ${m.status === 'complete' ? 'text-dark-400 line-through' : 'text-white'}`}>
+            <span className={`text-sm ${m.status === 'complete' ? 'text-dark-400 line-through' : 'text-dark-50'}`}>
               {m.title}
             </span>
           </div>
@@ -43,7 +43,7 @@ export default function MilestoneList({ milestones, onUpdate }) {
             {m.target_date && (
               <span className="text-dark-400 text-xs">{m.target_date}</span>
             )}
-            <Badge color={statusColors[m.status]}>{m.status}</Badge>
+            <Badge color={statusColors[m.status]} variant="label" dot>{m.status}</Badge>
           </div>
         </div>
       ))}

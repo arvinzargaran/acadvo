@@ -123,7 +123,7 @@ export default function CourseTable({ courses, requirements, credentials = [], o
               className={`px-3 py-1 rounded-lg text-xs font-medium transition ${
                 filter === f.key
                   ? 'bg-primary-600 text-white'
-                  : 'bg-dark-800 text-dark-400 hover:text-white border border-dark-700'
+                  : 'bg-dark-800 text-dark-400 hover:text-dark-50 border border-dark-700'
               }`}
             >
               {f.label} ({statusCounts[f.key]})
@@ -136,7 +136,7 @@ export default function CourseTable({ courses, requirements, credentials = [], o
             placeholder="Search courses..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="bg-dark-800 border border-dark-700 rounded-lg px-3 py-1.5 text-sm text-white placeholder-dark-500 w-48 focus:outline-none focus:border-primary-500"
+            className="bg-dark-800 border border-dark-700 rounded-lg px-3 py-1.5 text-sm text-dark-50 placeholder-dark-500 w-48 focus:outline-none focus:border-primary-500"
           />
           <button
             onClick={handleAddClick}
@@ -208,12 +208,12 @@ export default function CourseTable({ courses, requirements, credentials = [], o
                   />
                 ) : (
                   <tr key={course.id} className="border-b border-dark-700/50 last:border-0 hover:bg-dark-700/20 transition-colors">
-                    <td className="px-3 py-2.5 text-white text-sm font-medium">{course.course_code}</td>
+                    <td className="px-3 py-2.5 text-dark-50 text-sm font-medium">{course.course_code}</td>
                     <td className="px-3 py-2.5 text-dark-300 text-sm">{course.course_name}</td>
                     <td className="px-3 py-2.5 text-dark-300 text-sm">{course.credit_value}</td>
                     <td className="px-3 py-2.5 text-dark-300 text-sm">{course.term || <span className="text-dark-500">--</span>}</td>
                     <td className="px-3 py-2.5">
-                      <Badge color={statusColors[course.status]}>{course.status.replace('_', ' ')}</Badge>
+                      <Badge color={statusColors[course.status]} variant="label" dot>{course.status.replace('_', ' ')}</Badge>
                     </td>
                     <td className="px-3 py-2.5 text-dark-300 text-sm">{course.grade || <span className="text-dark-500">--</span>}</td>
                     <td className="px-3 py-2.5 text-dark-400 text-xs">

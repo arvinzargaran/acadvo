@@ -15,7 +15,10 @@ export default function CurrentCourses({ courses, bento = false }) {
     <>
       <h3 className="text-white font-semibold mb-3">Current Courses</h3>
       {current.length === 0 ? (
-        <p className="text-dark-400 text-sm">No courses in progress</p>
+        <div className="py-2">
+          <p className="font-display text-lg text-white">Nothing in progress</p>
+          <p className="text-dark-400 text-sm mt-0.5">Courses you mark as in-progress will show up here.</p>
+        </div>
       ) : (
         <div className="space-y-2">
           {current.map(c => (

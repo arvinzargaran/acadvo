@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Card from '../ui/Card';
 import Skeleton from '../ui/Skeleton';
+import Button from '../ui/Button';
 import { getWeeklySummary } from '../../api/dashboard';
 
 const CACHE_KEY = 'acadvo_weekly_summary';
@@ -66,19 +67,12 @@ export default function WeeklyCheckin({ bento = false }) {
   if (!summary) {
     return (
       <W>
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-white font-semibold">Weekly Check-in</h3>
-            <p className="text-dark-400 text-xs mt-0.5">AI-powered progress summary</p>
-          </div>
-          <button
-            onClick={generate}
-            className="px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white text-sm rounded-lg transition-all"
-          >
-            Generate
-          </button>
+        <div className="py-2">
+          <h3 className="font-display text-xl text-white">Your weekly check-in</h3>
+          <p className="text-dark-400 text-sm mt-1 mb-4 max-w-sm">An AI-written recap of your progress, highlights, and next steps.</p>
+          <Button variant="accent" onClick={generate}>Generate summary</Button>
+          {error && <p className="text-red-400 text-sm mt-3">{error}</p>}
         </div>
-        {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
       </W>
     );
   }
@@ -86,7 +80,7 @@ export default function WeeklyCheckin({ bento = false }) {
   return (
     <W>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-white font-semibold">Weekly Check-in</h3>
+        <h3 className="font-display text-lg text-white">Weekly Check-in</h3>
         <button onClick={generate} className="text-dark-400 hover:text-white text-xs transition-colors">
           Refresh
         </button>

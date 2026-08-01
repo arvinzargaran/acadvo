@@ -89,10 +89,11 @@ function GlowRing({ value, size = 160, showText = true }) {
             <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="rgba(255,138,0,0.45)" />
           </filter>
         </defs>
-        {/* Track */}
+        {/* Track — theme-aware (invisible ink on dark otherwise) */}
         <circle
           cx={size / 2} cy={size / 2} r={radius}
-          fill="none" stroke="rgba(36,30,21,0.12)" strokeWidth={strokeWidth}
+          fill="none" stroke="currentColor" strokeWidth={strokeWidth}
+          className="text-black/10 dark:text-white/10"
         />
         {/* Animated arc */}
         <motion.circle
@@ -109,7 +110,7 @@ function GlowRing({ value, size = 160, showText = true }) {
       {/* Center text */}
       {showText && (
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className={`${numSize} font-extrabold text-white tabular-nums leading-none`}>
+          <span className={`${numSize} font-display font-semibold text-white tabular-nums leading-none`}>
             {display}
             <span className={`${pctSize} font-normal text-dark-400`}>%</span>
           </span>

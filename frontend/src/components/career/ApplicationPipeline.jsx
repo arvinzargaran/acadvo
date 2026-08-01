@@ -1,9 +1,11 @@
+import Badge from '../ui/Badge';
+
 const columns = [
-  { key: 'researching', label: 'Researching', color: 'border-dark-500', dotColor: 'bg-dark-400' },
-  { key: 'applied', label: 'Applied', color: 'border-primary-500/50', dotColor: 'bg-primary-400' },
-  { key: 'interviewing', label: 'Interviewing', color: 'border-yellow-500/50', dotColor: 'bg-yellow-400' },
-  { key: 'offer', label: 'Offer', color: 'border-green-500/50', dotColor: 'bg-green-400' },
-  { key: 'rejected', label: 'Rejected', color: 'border-red-500/50', dotColor: 'bg-red-400' },
+  { key: 'researching', label: 'Researching', color: 'border-dark-500', badge: 'gray' },
+  { key: 'applied', label: 'Applied', color: 'border-primary-500/50', badge: 'blue' },
+  { key: 'interviewing', label: 'Interviewing', color: 'border-yellow-500/50', badge: 'yellow' },
+  { key: 'offer', label: 'Offer', color: 'border-green-500/50', badge: 'green' },
+  { key: 'rejected', label: 'Rejected', color: 'border-red-500/50', badge: 'red' },
 ];
 
 export default function ApplicationPipeline({ targets, onEdit, onStatusChange }) {
@@ -17,13 +19,10 @@ export default function ApplicationPipeline({ targets, onEdit, onStatusChange })
   return (
     <div className="flex md:grid md:grid-cols-3 lg:grid-cols-5 gap-3 overflow-x-auto md:overflow-visible snap-x snap-mandatory md:snap-none scrollbar-hide -mx-1 px-1 pb-1 md:mx-0 md:px-0 md:pb-0">
       {columns.map(col => (
-        <div key={col.key} className={`bg-dark-800 rounded-xl border-t-2 ${col.color} min-h-[200px] w-[80%] sm:w-[46%] shrink-0 snap-start md:w-auto md:shrink`}>
-          <div className="px-3 py-2 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${col.dotColor}`} />
-              <span className="text-dark-300 text-xs font-medium uppercase tracking-wide">{col.label}</span>
-            </div>
-            <span className="text-dark-500 text-xs">{grouped[col.key].length}</span>
+        <div key={col.key} className={`bg-dark-800 ring-1 ring-black/5 dark:ring-white/10 rounded-xl border-t-2 ${col.color} min-h-[200px] w-[80%] sm:w-[46%] shrink-0 snap-start md:w-auto md:shrink`}>
+          <div className="px-3 py-2.5 flex items-center justify-between">
+            <Badge color={col.badge} variant="label" dot>{col.label}</Badge>
+            <span className="font-display tabular-nums text-sm text-dark-400">{grouped[col.key].length}</span>
           </div>
           <div className="px-2 pb-2 space-y-2">
             {grouped[col.key].map(target => (
@@ -32,13 +31,13 @@ export default function ApplicationPipeline({ targets, onEdit, onStatusChange })
                 onClick={() => onEdit(target)}
                 className="bg-dark-700/70 hover:bg-dark-700 border border-dark-600 rounded-lg p-3 cursor-pointer transition-colors"
               >
-                <p className="text-white text-sm font-medium">{target.company_name}</p>
+                <p className="text-dark-50 text-sm font-medium">{target.company_name}</p>
                 {target.role_type && (
                   <p className="text-dark-400 text-xs mt-0.5">{target.role_type}</p>
                 )}
                 {target.target_term && (
-                  <span className="inline-block mt-1.5 text-[10px] bg-dark-600 text-dark-300 rounded px-1.5 py-0.5">
-                    {target.target_term}
+                  <span className="inline-block mt-1.5">
+                    <Badge color="gray" variant="label">{target.target_term}</Badge>
                   </span>
                 )}
                 {/* Quick status advance buttons */}

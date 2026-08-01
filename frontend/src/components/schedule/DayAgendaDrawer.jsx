@@ -43,8 +43,8 @@ export default function DayAgendaDrawer({ dateKey, events, onClose }) {
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-5 border-b border-white/5">
               <div>
-                <p className="text-dark-400 text-xs font-semibold uppercase tracking-widest">Agenda</p>
-                <h2 className="text-white text-lg font-bold mt-0.5">{dateLabel}</h2>
+                <p className="eyebrow">Agenda</p>
+                <h2 className="font-display text-xl text-dark-50 mt-0.5">{dateLabel}</h2>
               </div>
               <button
                 onClick={onClose}
@@ -60,11 +60,13 @@ export default function DayAgendaDrawer({ dateKey, events, onClose }) {
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
               {(!events || events.length === 0) ? (
                 <div className="flex flex-col items-center justify-center h-full text-center py-12">
-                  <svg className="w-12 h-12 text-dark-600 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  <p className="text-dark-400 text-sm">Nothing scheduled for this day</p>
-                  <p className="text-dark-500 text-xs mt-1">Enjoy the free time!</p>
+                  <div className="icon-chip w-14 h-14 mb-4 rounded-2xl flex items-center justify-center text-primary-600 dark:text-primary-400">
+                    <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <p className="font-display text-lg text-dark-50">Nothing scheduled for this day</p>
+                  <p className="text-dark-400 text-xs mt-1">Enjoy the free time.</p>
                 </div>
               ) : (
                 events.map(event => <AgendaCard key={event.id} event={event} />)
@@ -99,9 +101,9 @@ function AgendaCard({ event }) {
         <div className={`w-1 rounded-full ${s.dot} flex-shrink-0 self-stretch`} />
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <p className="text-white text-sm font-semibold">{event.title}</p>
+            <p className="text-dark-50 text-sm font-semibold">{event.title}</p>
             {event.weight != null && (
-              <span className={`text-xs font-bold ${s.text} flex-shrink-0`}>{event.weight}%</span>
+              <span className={`text-xs font-bold ${s.text} flex-shrink-0 tabular-nums`}>{event.weight}%</span>
             )}
           </div>
 

@@ -48,11 +48,13 @@ export default function YearlyView({ events }) {
   if (semesters.length === 0) {
     return (
       <div className="text-center py-12">
-        <svg className="w-12 h-12 text-dark-500 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-        </svg>
-        <p className="text-dark-400 text-sm">No major events found.</p>
-        <p className="text-dark-500 text-xs mt-1">Upload syllabi or add career deadlines to see your strategic roadmap.</p>
+        <div className="icon-chip w-14 h-14 mx-auto mb-4 rounded-2xl flex items-center justify-center text-primary-600 dark:text-primary-400">
+          <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+          </svg>
+        </div>
+        <p className="font-display text-xl text-dark-50">No milestones on the horizon</p>
+        <p className="text-dark-400 text-sm mt-1">Upload syllabi or add career deadlines to see your strategic roadmap.</p>
       </div>
     );
   }
@@ -72,9 +74,9 @@ export default function YearlyView({ events }) {
                 <div className={`w-3 h-3 rounded-full border-2 ${
                   current ? 'border-primary-500 bg-primary-500 shadow-lg shadow-primary-500/30' : 'border-dark-400 bg-dark-800'
                 }`} style={{ marginLeft: '18px' }} />
-                <h3 className={`text-base font-bold ${current ? 'text-white' : 'text-dark-300'}`}>
+                <h3 className={`font-display text-lg ${current ? 'text-dark-50' : 'text-dark-300'}`}>
                   {sem.label}
-                  {current && <span className="ml-2 text-xs text-primary-400 font-normal">(Current)</span>}
+                  {current && <span className="ml-2 text-xs text-primary-500 dark:text-primary-400 font-sans">(Current)</span>}
                 </h3>
                 <span className="text-dark-500 text-xs">{sem.events.length} event{sem.events.length !== 1 ? 's' : ''}</span>
               </div>
@@ -103,7 +105,7 @@ export default function YearlyView({ events }) {
 
                         {/* Content */}
                         <div className="flex-1 min-w-0">
-                          <p className="text-white text-sm font-medium truncate">{e.title}</p>
+                          <p className="text-dark-50 text-sm font-medium truncate">{e.title}</p>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className={`text-[10px] px-2 py-0.5 rounded-full border ${s.badge} capitalize`}>{e.category}</span>
                             <span className="text-dark-500 text-[10px]">{e.type}</span>

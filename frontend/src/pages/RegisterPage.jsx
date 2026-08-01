@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
+import AuthLayout from '../components/layout/AuthLayout';
 import { CANADIAN_UNIVERSITIES } from '../data/universities';
 import { PROGRAMS } from '../data/programs';
 
@@ -31,6 +32,17 @@ export default function RegisterPage() {
       setError('Passwords do not match.');
       return;
     }
+    // The searchable university field only commits a value when an option is
+    // picked — typing text without selecting leaves it blank. Guard so the form
+    // can't submit with an empty/half-typed university.
+    if (!form.university) {
+      setError('Please select your university from the list.');
+      return;
+    }
+    if (!form.program) {
+      setError('Please select your program.');
+      return;
+    }
     setLoading(true);
     try {
       await register(form);
@@ -48,93 +60,80 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-dark-950">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <Link to="/" className="inline-block text-2xl font-bold font-display text-primary-600 hover:opacity-80 transition-opacity">Acadvo</Link>
-          <p className="text-gray-400 mt-1">Create your account</p>
+    <AuthLayout eyebrow="Start your plan" title="Create account" wide>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-600 dark:text-red-400">
+            {error}
+          </div>
+        )}
+
+        <Input
+          label="Full Name"
+          value={form.full_name}
+          onChange={update('full_name')}
+          placeholder="Jane Doe"
+          required
+        />
+
+        <Input
+          label="Email"
+          type="email"
+          value={form.email}
+          onChange={update('email')}
+          placeholder="you@example.com"
+          required
+        />
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Input
+            label="Password"
+            type="password"
+            value={form.password}
+            onChange={update('password')}
+            placeholder="Min 8 characters"
+            required
+            minLength={8}
+          />
+
+          <Input
+            label="Confirm Password"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="Repeat"
+            required
+          />
         </div>
 
-        <div className="bg-white/5 border border-white/10 rounded-xl p-6 shadow-sm">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-600 dark:text-red-400">
-                {error}
-              </div>
-            )}
+        <Select
+          label="University"
+          searchable
+          options={CANADIAN_UNIVERSITIES}
+          value={form.university}
+          onChange={update('university')}
+          placeholder="Search your university..."
+        />
 
-            <Input
-              label="Full Name"
-              value={form.full_name}
-              onChange={update('full_name')}
-              placeholder="Jane Doe"
-              required
-            />
+        <Select
+          label="Program"
+          options={PROGRAMS}
+          value={form.program}
+          onChange={update('program')}
+          placeholder="Select your program"
+        />
 
-            <Input
-              label="Email"
-              type="email"
-              value={form.email}
-              onChange={update('email')}
-              placeholder="you@example.com"
-              required
-            />
+        <Button type="submit" variant="accent" loading={loading} className="w-full">
+          Create account
+        </Button>
+      </form>
 
-            <Input
-              label="Password"
-              type="password"
-              value={form.password}
-              onChange={update('password')}
-              placeholder="Min 8 characters"
-              required
-              minLength={8}
-            />
-
-            <Input
-              label="Confirm Password"
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Repeat your password"
-              required
-            />
-
-            <Select
-              label="University"
-              searchable
-              options={CANADIAN_UNIVERSITIES}
-              value={form.university}
-              onChange={update('university')}
-              placeholder="Search your university..."
-            />
-
-            <Select
-              label="Program"
-              options={PROGRAMS}
-              value={form.program}
-              onChange={update('program')}
-              placeholder="Select your program"
-            />
-
-            <Button type="submit" loading={loading} className="w-full">
-              Create account
-            </Button>
-          </form>
-
-          <p className="mt-4 text-center text-sm text-gray-400">
-            Already have an account?{' '}
-            <Link to="/login" className="text-primary-400 hover:text-primary-300">
-              Sign in
-            </Link>
-          </p>
-        </div>
-
-        <div className="mt-6 text-center">
-          <Link to="/" className="text-sm text-gray-500 hover:text-gray-300 transition-colors">
-            ← Back to home
-          </Link>
-        </div>
-      </div>
-    </div>
+      <p className="mt-4 text-sm text-dark-400">
+        Already have an account?{' '}
+        <Link to="/login" className="text-primary-600 dark:text-primary-400 hover:underline font-medium">
+          Sign in
+        </Link>
+      </p>
+    </AuthLayout>
   );
 }

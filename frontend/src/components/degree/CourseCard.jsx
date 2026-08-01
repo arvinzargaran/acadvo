@@ -14,10 +14,10 @@ export default function CourseCard({ course, bucketName, credentialName, onEdit,
     <div className="bg-dark-800 border border-dark-700 rounded-xl p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-white text-sm font-semibold">{course.course_code}</p>
+          <p className="font-display text-base text-dark-50">{course.course_code}</p>
           <p className="text-dark-300 text-sm truncate">{course.course_name}</p>
         </div>
-        <Badge color={statusColors[course.status]}>{course.status.replace('_', ' ')}</Badge>
+        <Badge color={statusColors[course.status]} variant="label" dot>{course.status.replace('_', ' ')}</Badge>
       </div>
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
