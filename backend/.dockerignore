@@ -1,0 +1,17 @@
+# Never copy the local virtualenv into the image — it holds macOS/host-arch
+# binaries that break under the linux container, and bloats the image by ~500MB.
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+*.log
+uvicorn.log
+uvicorn.restart.log
+.env
+.git/
+.DS_Store

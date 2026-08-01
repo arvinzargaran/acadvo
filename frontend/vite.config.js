@@ -52,6 +52,20 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        // Split heavy, rarely-changing vendors into their own long-cached chunks
+        // instead of one ~900KB bundle. Improves first-paint and lets a redeploy
+        // reuse cached vendor chunks (only the app chunk changes most releases).
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          animation: ['framer-motion', 'gsap', 'lenis'],
+          markdown: ['react-markdown'],
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/api': {

@@ -16,6 +16,9 @@ frontend/dist/
 .env.local
 .env.production
 
+# Logs (runtime output should never be versioned)
+*.log
+
 # IDE
 .vscode/
 .idea/
