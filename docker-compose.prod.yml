@@ -14,6 +14,18 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    # Shared rate-limit store so limits are exact and consistent across the
+    # backend's multiple workers (in-memory would count per-worker and reset on
+    # restart). Network-internal only; no host port mapping.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   backend:
     build: ./backend
     # Bind to loopback: only a same-host TLS reverse proxy (nginx/Caddy) should
@@ -23,8 +35,14 @@ services:
       - "127.0.0.1:8000:8000"
     env_file:
       - .env
+    # Point the rate limiter at the shared Redis store. Overrides any stale value
+    # in .env so the multi-worker limit is always exact in this deployment.
+    environment:
+      RATE_LIMIT_STORAGE_URI: redis://redis:6379
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     # --proxy-headers trusts X-Forwarded-For ONLY from the IPs in
     # --forwarded-allow-ips. Set FORWARDED_ALLOW_IPS to your reverse proxy's IP;
@@ -34,7 +52,12 @@ services:
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=${FORWARDED_ALLOW_IPS:-127.0.0.1}"
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # Baked into the JS bundle at build time. MUST be the API's public URL
+        # (e.g. https://api.yourdomain.com), or the deployed app calls localhost.
+        VITE_API_URL: ${VITE_API_URL:?set VITE_API_URL to the public API URL in .env}
     ports:
       - "80:80"
     depends_on:

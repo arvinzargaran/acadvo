@@ -736,18 +736,24 @@ async def delete_assessments_for_course(
 async def parse_and_save_syllabus(
     course_id: uuid.UUID, user_id: uuid.UUID, file_bytes: bytes, mime_type: str, db: AsyncSession
 ) -> list[Assessment]:
-    """Parse a syllabus document via Gemini and save extracted assessments."""
+    """Parse a syllabus document via the AI client and save extracted assessments."""
+    import base64
     import json
-    from google.genai import types
-    from app.ai.client import get_gemini_client
+    from datetime import datetime as dt, timezone
+
+    from app.ai.client import get_groq_client
     from app.config import settings
     from app.models.career import TimelineEvent, TimelineCategory
-    from datetime import datetime as dt
+    from app.services.document_parser import (
+        SPREADSHEET_MIME_TYPES,
+        _pdf_to_text,
+        _spreadsheet_to_text,
+    )
 
     # Verify course ownership
     course = await get_course(course_id, user_id, db)
 
-    client = get_gemini_client()
+    client = get_groq_client()
 
     prompt = (
         "You are an expert academic coordinator. Extract all graded assessments from this document "
@@ -759,21 +765,43 @@ async def parse_and_save_syllabus(
         "Return ONLY valid JSON — no markdown fences, no extra text."
     )
 
-    response = client.models.generate_content(
-        model=settings.GEMINI_MODEL,
-        contents=[
-            prompt,
-            types.Part.from_bytes(data=file_bytes, mime_type=mime_type),
-        ]
-    )
+    if mime_type == "application/pdf":
+        content_text = _pdf_to_text(file_bytes)
+        response = client.chat.completions.create(
+            model=settings.GROQ_MODEL,
+            messages=[{"role": "user", "content": f"{prompt}\n\nDocument content:\n\n{content_text}"}],
+            max_tokens=4096,
+        )
+    elif mime_type in SPREADSHEET_MIME_TYPES:
+        content_text = _spreadsheet_to_text(file_bytes, mime_type)
+        response = client.chat.completions.create(
+            model=settings.GROQ_MODEL,
+            messages=[{"role": "user", "content": f"{prompt}\n\nDocument content:\n\n{content_text}"}],
+            max_tokens=4096,
+        )
+    else:
+        b64 = base64.b64encode(file_bytes).decode()
+        response = client.chat.completions.create(
+            model=settings.GROQ_VISION_MODEL,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64}"}},
+                ],
+            }],
+            max_tokens=4096,
+        )
 
-    text = response.text.strip()
+    text = response.choices[0].message.content.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
 
     parsed = json.loads(text)
     if isinstance(parsed, dict) and "assessments" in parsed:
         parsed = parsed["assessments"]
+    if not isinstance(parsed, list):
+        parsed = []
 
     # Build a set of existing assessment titles to avoid duplicates
     existing = await db.execute(

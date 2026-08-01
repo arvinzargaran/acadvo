@@ -1,0 +1,11 @@
+# Deps are installed fresh (npm ci) and the app is built inside the image, so
+# copying these in just bloats the build context and risks a stale dist.
+node_modules/
+dist/
+.vite/
+*.log
+vite.log
+.env
+.env.*
+.git/
+.DS_Store

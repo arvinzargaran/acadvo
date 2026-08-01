@@ -104,9 +104,14 @@ async def groq_rate_limit_handler(request: Request, exc: GroqRateLimitError):
     )
 
 
+# Strip whitespace so `CORS_ORIGINS="https://a.com, https://b.com"` (space after
+# the comma — a very common .env mistake) doesn't silently fail to match the
+# space-prefixed origin. The lifespan safety check already strips; match it here.
+_cors_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS.split(","),
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
