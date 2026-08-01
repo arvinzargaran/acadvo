@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ── Category config ──────────────────────────────────────────────
@@ -20,13 +21,13 @@ const COLOR_MAP = {
 
 // ── Insight generator ────────────────────────────────────────────
 
-function generateInsights({ summary, courses, projects, events }) {
+function generateInsights({ summary, courses, projects, events, cumulativeGpa, careerTargets }) {
   const insights = [];
   const now = new Date();
 
   // ─ GPA strategy ─
-  if (summary?.cumulative_gpa != null) {
-    const gpa = summary.cumulative_gpa;
+  if (cumulativeGpa != null) {
+    const gpa = cumulativeGpa;
     const inProgress = courses?.filter(c => c.status === 'in_progress') || [];
     if (gpa < 3.0 && inProgress.length > 0) {
       const course = inProgress[0];
@@ -151,7 +152,7 @@ function generateInsights({ summary, courses, projects, events }) {
   }
 
   // ─ Career targets ─
-  const hasTargets = (events || []).some(e => e.event_type === 'application' || e.event_type === 'interview');
+  const hasTargets = (careerTargets?.length || 0) > 0;
   if (!hasTargets && projects?.length > 0) {
     insights.push({
       id: 'career-targets',
@@ -195,8 +196,8 @@ const CYCLE_INTERVAL = 6000;
 
 // ── Component ────────────────────────────────────────────────────
 
-export default function SmartInsightsFeed({ summary, courses, projects, events, suggestions, onAccept, onDismiss }) {
-  const generated = generateInsights({ summary, courses, projects, events });
+export default function SmartInsightsFeed({ summary, courses, projects, events, suggestions, onAccept, onDismiss, cumulativeGpa, careerTargets }) {
+  const generated = generateInsights({ summary, courses, projects, events, cumulativeGpa, careerTargets });
   const server = mapServerSuggestions(suggestions);
   const allInsights = [...server, ...generated].sort((a, b) => a.priority - b.priority);
 
@@ -287,12 +288,12 @@ export default function SmartInsightsFeed({ summary, courses, projects, events, 
             {/* Actions */}
             <div className="flex items-center gap-2 mt-3">
               {insight.action && (
-                <a
-                  href={insight.action.href}
+                <Link
+                  to={insight.action.href}
                   className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${colors.tag} hover:bg-white/10`}
                 >
                   {insight.action.label}
-                </a>
+                </Link>
               )}
               {insight.isServer && (
                 <>

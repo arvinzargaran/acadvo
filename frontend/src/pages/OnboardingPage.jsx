@@ -358,7 +358,7 @@ export default function OnboardingPage() {
               placeholder="e.g. Land a SWE internship at a FAANG company by Summer 2027"
               rows={3}
               autoFocus
-              className="w-full bg-dark-800 border border-dark-600 text-white rounded-xl px-4 py-3 text-base placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors resize-none"
+              className="w-full bg-dark-800 border border-dark-600 text-dark-50 rounded-xl px-4 py-3 text-base placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors resize-none"
             />
           </div>
         );
@@ -398,7 +398,7 @@ export default function OnboardingPage() {
       {/* Progress bar */}
       <div className="h-1 bg-dark-800 w-full">
         <motion.div
-          className="h-full bg-primary-500"
+          className="h-full bg-gradient-to-r from-primary-500 to-primary-600"
           animate={{ width: `${progress}%` }}
           transition={{ duration: 0.4, ease: 'easeOut' }}
         />
@@ -406,10 +406,10 @@ export default function OnboardingPage() {
 
       {/* Top bar */}
       <div className="px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-lg font-bold text-white">Acadvo</span>
-          <span className="text-dark-500 text-sm">
-            {step + 1} / {TOTAL_STEPS}
+        <div className="flex items-baseline gap-3">
+          <span className="text-xl font-bold font-display text-primary-600 tracking-tight">Acadvo</span>
+          <span className="text-dark-400 text-xs font-semibold uppercase tracking-[0.18em] tabular-nums">
+            Step {step + 1} / {TOTAL_STEPS}
           </span>
         </div>
         <button
@@ -418,7 +418,7 @@ export default function OnboardingPage() {
             await logout();
             navigate('/');
           }}
-          className="flex items-center gap-1.5 text-dark-500 hover:text-white text-sm transition-colors"
+          className="flex items-center gap-1.5 text-dark-400 hover:text-dark-50 text-sm transition-colors"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -441,12 +441,12 @@ export default function OnboardingPage() {
             className="w-full flex flex-col items-center text-center"
           >
             {/* Section label */}
-            <p className="text-primary-400 text-xs font-semibold uppercase tracking-widest mb-3">
+            <p className="eyebrow mb-3">
               {q.section}
             </p>
 
             {/* Question */}
-            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-8 max-w-xl leading-snug">
+            <h1 className="font-display text-3xl sm:text-4xl tracking-tight text-dark-50 mb-8 max-w-xl leading-[1.15]">
               {q.question(profile)}
             </h1>
 
@@ -463,7 +463,7 @@ export default function OnboardingPage() {
             onClick={goBack}
             disabled={step === 0}
             className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${
-              step === 0 ? 'text-dark-700 cursor-not-allowed' : 'text-dark-400 hover:text-white'
+              step === 0 ? 'text-dark-600 cursor-not-allowed' : 'text-dark-400 hover:text-dark-50'
             }`}
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -480,7 +480,7 @@ export default function OnboardingPage() {
               disabled={!canContinue()}
               className={`flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                 canContinue()
-                  ? 'bg-primary-600 hover:bg-primary-700 text-white'
+                  ? 'btn-accent'
                   : 'bg-dark-800 text-dark-500 cursor-not-allowed'
               }`}
             >
@@ -580,7 +580,7 @@ function CoursesPanel({ courses, buckets, updateCourse, addCourse, removeCourse,
 
               {/* Clickable area */}
               <div onClick={() => cycleStatus(i)}>
-                <p className="text-white font-semibold text-sm pr-8">{course.course_code || 'Untitled'}</p>
+                <p className="text-dark-50 font-semibold text-sm pr-8">{course.course_code || 'Untitled'}</p>
                 <p className="text-dark-400 text-xs mt-0.5 truncate">{course.course_name}</p>
                 <div className="flex items-center gap-2 mt-2">
                   <span className="text-dark-500 text-[10px]">{course.credit_value || '?'} cr</span>
@@ -606,7 +606,7 @@ function CoursesPanel({ courses, buckets, updateCourse, addCourse, removeCourse,
                         className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
                           course.grade === g
                             ? 'bg-green-500 text-white shadow-md shadow-green-500/30'
-                            : 'bg-white/5 text-dark-300 hover:bg-white/10 hover:text-white'
+                            : 'bg-white/5 text-dark-300 hover:bg-white/10 hover:text-dark-50'
                         }`}
                       >
                         {g}
@@ -636,7 +636,7 @@ function CoursesPanel({ courses, buckets, updateCourse, addCourse, removeCourse,
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAddModal(false)} />
           <div className="relative bg-dark-800 border border-dark-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-            <h3 className="text-white font-semibold mb-4">Add a Course</h3>
+            <h3 className="font-display text-lg text-dark-50 mb-4">Add a Course</h3>
             <div className="space-y-3">
               <Input
                 label="Course Code"
@@ -661,7 +661,7 @@ function CoursesPanel({ courses, buckets, updateCourse, addCourse, removeCourse,
               />
             </div>
             <div className="flex justify-end gap-3 mt-5">
-              <button onClick={() => setShowAddModal(false)} className="px-4 py-2 text-dark-400 text-sm hover:text-white transition-colors">Cancel</button>
+              <button onClick={() => setShowAddModal(false)} className="px-4 py-2 text-dark-400 text-sm hover:text-dark-50 transition-colors">Cancel</button>
               <button
                 onClick={handleAddManual}
                 disabled={!newCourse.course_code.trim()}
@@ -707,7 +707,7 @@ function ProjectsPanel({ projects, updateProject, addProject, removeProject }) {
               onChange={(e) => updateProject(i, 'description', e.target.value)}
               placeholder="What does this project do?"
               rows={2}
-              className="w-full bg-dark-800 border border-dark-600 text-white rounded-lg px-3 py-2 text-sm placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors resize-none"
+              className="w-full bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-3 py-2 text-sm placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors resize-none"
             />
           </div>
         ))}
@@ -799,7 +799,7 @@ function ReviewSection({ title, step, onEdit, children }) {
   return (
     <div className="bg-dark-800/60 border border-dark-700 rounded-xl p-4 space-y-2">
       <div className="flex justify-between items-center">
-        <h3 className="text-sm font-semibold text-white">{title}</h3>
+        <h3 className="text-sm font-semibold text-dark-50">{title}</h3>
         <button onClick={() => onEdit(step)} className="text-xs text-primary-400 hover:text-primary-300 transition-colors">Edit</button>
       </div>
       {children}

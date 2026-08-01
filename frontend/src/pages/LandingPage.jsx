@@ -431,9 +431,14 @@ function Navbar({ user }) {
           : 'py-5 bg-transparent border-b border-transparent'
       }`}
     >
-      <span className="text-xl font-bold font-display text-primary-600 tracking-tight">
-        acadvo
-      </span>
+      <a href="#top" className="flex items-center gap-2 group">
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg btn-accent font-display text-base font-bold leading-none transition-transform group-hover:scale-105">
+          A
+        </span>
+        <span className="text-xl font-bold font-display text-primary-600 tracking-tight">
+          acadvo
+        </span>
+      </a>
 
       <div className="hidden md:flex items-center gap-8 text-sm text-dark-300">
         <a href="#features" className="hover:text-white transition-colors">Features</a>

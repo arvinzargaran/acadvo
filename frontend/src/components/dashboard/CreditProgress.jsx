@@ -15,8 +15,8 @@ export default function CreditProgress({ summary, bento = false }) {
           label=""
         />
         <div className="text-sm text-dark-300 min-w-0">
-          <p className="text-white font-semibold text-lg whitespace-nowrap">{summary.total_credits_completed} / {summary.total_credits_required}</p>
-          <p>credits completed</p>
+          <p className="font-display tabular-nums text-white text-2xl whitespace-nowrap">{summary.total_credits_completed} / {summary.total_credits_required}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-dark-400 mt-0.5">credits completed</p>
         </div>
       </div>
       <div className="space-y-3">

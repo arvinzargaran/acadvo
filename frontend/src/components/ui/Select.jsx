@@ -19,16 +19,16 @@ export default function Select({
     return (
       <div className="space-y-1">
         {label && (
-          <label className="block text-sm font-medium text-gray-700 dark:text-dark-300">
+          <label className="block text-sm font-medium text-dark-300">
             {label}
           </label>
         )}
         <select
           value={value || ''}
           onChange={onChange}
-          className={`w-full bg-white dark:bg-dark-800 border border-gray-200 dark:border-dark-600 text-gray-900 dark:text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors ${
+          className={`w-full bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-3 py-2 text-sm focus:border-primary-500 transition-colors ${
             error ? 'border-red-500' : ''
-          } ${!value ? 'text-gray-400 dark:text-dark-400' : ''} ${className}`}
+          } ${!value ? 'text-dark-400' : ''} ${className}`}
           {...rest}
         >
           <option value="" disabled>
@@ -119,10 +119,10 @@ function SearchableSelect({
           }
         }}
         onFocus={() => setOpen(true)}
-        className={`w-full bg-white dark:bg-dark-800 border ${
-          value === query ? 'border-green-500/50 focus:ring-green-500' : 'border-gray-200 dark:border-dark-600 focus:ring-primary-500'
-        } text-gray-900 dark:text-white rounded-lg px-3 py-2 text-sm placeholder-gray-400 dark:placeholder-dark-400 focus:outline-none focus:ring-2 focus:border-transparent transition-colors ${
-          error ? '!border-red-500 focus:ring-red-500' : ''
+        className={`w-full bg-dark-800 border ${
+          value === query ? 'border-green-500/50' : 'border-dark-600 focus:border-primary-500'
+        } text-dark-50 rounded-lg px-3 py-2 text-sm placeholder-dark-400 transition-colors ${
+          error ? '!border-red-500' : ''
         } ${className}`}
       />
       {open && query && value !== query && (
@@ -131,7 +131,7 @@ function SearchableSelect({
         </span>
       )}
       {open && filtered.length > 0 && (
-        <ul className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto bg-white dark:bg-dark-800 border border-gray-200 dark:border-dark-600 rounded-lg shadow-xl">
+        <ul className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto bg-dark-800 border border-dark-600 rounded-lg shadow-editorial">
           {filtered.map((o) => (
             <li
               key={o.value}
@@ -139,7 +139,7 @@ function SearchableSelect({
               className={`px-3 py-2 text-sm cursor-pointer transition-colors ${
                 o.value === value
                   ? 'bg-primary-600 text-white'
-                  : 'text-gray-700 dark:text-dark-200 hover:bg-gray-100 dark:hover:bg-dark-700'
+                  : 'text-dark-200 hover:bg-dark-700'
               }`}
             >
               {o.label}

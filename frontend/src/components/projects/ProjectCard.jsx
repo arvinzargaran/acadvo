@@ -1,21 +1,19 @@
 import { motion } from 'framer-motion';
 import MilestoneList from './MilestoneList';
+import Badge from '../ui/Badge';
 
 const STATUS_CONFIG = {
-  not_started: { label: 'Not Started', bg: 'bg-gray-500/20', text: 'text-gray-400', glow: '' },
-  in_progress: { label: 'In Progress', bg: 'bg-yellow-500/20', text: 'text-yellow-400', glow: '' },
-  deployed: { label: 'Deployed', bg: 'bg-green-500/20', text: 'text-green-400', glow: '' },
-  interview_ready: { label: 'Interview Ready', bg: 'bg-green-500/20', text: 'text-green-400', glow: '' },
+  not_started: { label: 'Not Started', color: 'gray' },
+  in_progress: { label: 'In Progress', color: 'yellow' },
+  deployed: { label: 'Deployed', color: 'green' },
+  interview_ready: { label: 'Interview Ready', color: 'green' },
 };
 
 const PRIORITY_CONFIG = {
-  1: { label: 'P1', bg: 'bg-red-500/20', text: 'text-red-400', ring: 'ring-red-500/30' },
-  2: { label: 'P2', bg: 'bg-amber-500/20', text: 'text-amber-400', ring: 'ring-amber-500/30' },
-  3: { label: 'P3', bg: 'bg-dark-600', text: 'text-dark-400', ring: '' },
+  1: { label: 'P1', color: 'red' },
+  2: { label: 'P2', color: 'yellow' },
+  3: { label: 'P3', color: 'gray' },
 };
-
-// Tech pills are labels, not status — one neutral treatment for all of them.
-const TECH_PILL = 'bg-dark-700 text-dark-300';
 
 export default function ProjectCard({ project, index = 0, onUpdateMilestone, onEdit, onDelete }) {
   const status = STATUS_CONFIG[project.status] || STATUS_CONFIG.not_started;
@@ -43,31 +41,27 @@ export default function ProjectCard({ project, index = 0, onUpdateMilestone, onE
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45, delay: index * 0.08, ease: [0.25, 0.46, 0.45, 0.94] }}
-      className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-sm flex flex-col"
+      className="card-rich shadow-editorial ring-1 ring-black/5 dark:ring-white/10 rounded-2xl p-6 relative overflow-hidden flex flex-col"
     >
       {/* Header */}
       <div className="flex items-start justify-between gap-3 mb-3">
-        <h3 className="text-white font-bold text-lg leading-snug">{project.name}</h3>
+        <h3 className="font-display text-xl tracking-tight leading-snug text-dark-50">{project.name}</h3>
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ring-1 ${priority.bg} ${priority.text} ${priority.ring}`}>
-            {priority.label}
-          </span>
-          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${status.bg} ${status.text}`}>
-            {status.label}
-          </span>
+          <Badge color={priority.color} variant="label">{priority.label}</Badge>
+          <Badge color={status.color} variant="label" dot>{status.label}</Badge>
         </div>
       </div>
 
       {/* Description */}
       {project.description && (
-        <p className="text-white/70 text-sm leading-relaxed line-clamp-3 mb-4">{project.description}</p>
+        <p className="text-dark-300 text-sm leading-relaxed line-clamp-3 mb-4">{project.description}</p>
       )}
 
       {/* Product Framing */}
       {project.product_framing && (
-        <div className="bg-white/5 rounded-lg p-3 mb-4">
-          <p className="text-white/40 text-[10px] font-medium uppercase tracking-wider mb-1">Product Framing</p>
-          <p className="text-white/60 text-xs leading-relaxed line-clamp-2">{project.product_framing}</p>
+        <div className="bg-dark-700/50 rounded-lg p-3 mb-4">
+          <p className="eyebrow text-[10px] mb-1">Product Framing</p>
+          <p className="text-dark-400 text-xs leading-relaxed line-clamp-2">{project.product_framing}</p>
         </div>
       )}
 
@@ -82,28 +76,23 @@ export default function ProjectCard({ project, index = 0, onUpdateMilestone, onE
       {techItems.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-4 mt-auto">
           {techItems.map((tech, i) => (
-            <span
-              key={i}
-              className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${TECH_PILL}`}
-            >
-              {tech}
-            </span>
+            <Badge key={i} color="gray" variant="label">{tech}</Badge>
           ))}
         </div>
       )}
 
       {/* Empty-body hint — keeps sparse cards from showing a blank gap */}
       {!hasBody && (
-        <p className="text-white/30 text-sm italic mb-4">
+        <p className="text-dark-400 text-sm italic mb-4">
           No details yet — edit to add a description, milestones, or tech stack.
         </p>
       )}
 
       {/* Footer */}
-      <div className="flex items-center justify-between pt-3 border-t border-white/5 mt-auto">
+      <div className="flex items-center justify-between pt-3 border-t border-dark-600 mt-auto">
         <div className="flex items-center gap-3 text-xs">
           {project.hard_deadline && (
-            <span className={`flex items-center gap-1 ${daysLeft <= 7 ? 'text-red-400' : daysLeft <= 30 ? 'text-yellow-400' : 'text-white/40'}`}>
+            <span className={`flex items-center gap-1 ${daysLeft <= 7 ? 'text-red-400' : daysLeft <= 30 ? 'text-yellow-400' : 'text-dark-400'}`}>
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
               </svg>
@@ -111,12 +100,12 @@ export default function ProjectCard({ project, index = 0, onUpdateMilestone, onE
             </span>
           )}
           {project.repo_url && (
-            <a href={project.repo_url} target="_blank" rel="noopener noreferrer" className="text-white/40 hover:text-white/70 transition-colors">
+            <a href={project.repo_url} target="_blank" rel="noopener noreferrer" className="text-dark-400 hover:text-dark-50 transition-colors">
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 .3a12 12 0 00-3.8 23.38c.6.11.82-.26.82-.58v-2.02c-3.34.73-4.04-1.61-4.04-1.61a3.18 3.18 0 00-1.33-1.76c-1.09-.74.08-.73.08-.73a2.52 2.52 0 011.84 1.24 2.56 2.56 0 003.5 1 2.56 2.56 0 01.76-1.6c-2.67-.3-5.47-1.33-5.47-5.93a4.64 4.64 0 011.24-3.22 4.3 4.3 0 01.12-3.18s1-.33 3.3 1.23a11.38 11.38 0 016 0c2.28-1.56 3.29-1.23 3.29-1.23a4.3 4.3 0 01.12 3.18 4.64 4.64 0 011.23 3.22c0 4.61-2.81 5.63-5.48 5.92a2.87 2.87 0 01.82 2.23v3.29c0 .32.21.7.82.58A12 12 0 0012 .3z"/></svg>
             </a>
           )}
           {project.live_url && (
-            <a href={project.live_url} target="_blank" rel="noopener noreferrer" className="text-white/40 hover:text-white/70 transition-colors">
+            <a href={project.live_url} target="_blank" rel="noopener noreferrer" className="text-dark-400 hover:text-dark-50 transition-colors">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
               </svg>
@@ -126,7 +115,7 @@ export default function ProjectCard({ project, index = 0, onUpdateMilestone, onE
         <div className="flex items-center gap-1">
           <button
             onClick={() => onEdit(project)}
-            className="p-1.5 rounded-lg text-white/30 hover:text-white/70 hover:bg-white/5 transition-all"
+            className="p-1.5 rounded-lg text-dark-400 hover:text-dark-50 hover:bg-dark-700 transition-all"
             title="Edit"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -135,7 +124,7 @@ export default function ProjectCard({ project, index = 0, onUpdateMilestone, onE
           </button>
           <button
             onClick={() => onDelete(project.id)}
-            className="p-1.5 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-all"
+            className="p-1.5 rounded-lg text-dark-400 hover:text-red-400 hover:bg-red-500/10 transition-all"
             title="Delete"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

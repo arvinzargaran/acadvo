@@ -1,3 +1,4 @@
+import axios from 'axios';
 import client from './client';
 
 export function searchCourses(query) {
@@ -40,13 +41,32 @@ export function streamSemesterPlan(body, onEvent) {
   const controller = new AbortController();
   const baseURL = client.defaults.baseURL || 'http://localhost:8000';
 
-  fetch(`${baseURL}/course-advisor/generate-plan/stream`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify(body || {}),
-    signal: controller.signal,
-  })
+  const doFetch = () =>
+    fetch(`${baseURL}/course-advisor/generate-plan/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(body || {}),
+      signal: controller.signal,
+    });
+
+  // Raw fetch (needed for streaming) bypasses the axios 401→refresh interceptor,
+  // so replicate it: on a 401, refresh the access token once and retry, matching
+  // the transparent recovery every other API call gets.
+  const fetchWithRefresh = async () => {
+    let response = await doFetch();
+    if (response.status === 401) {
+      try {
+        await axios.post(`${baseURL}/auth/refresh`, {}, { withCredentials: true });
+        response = await doFetch();
+      } catch {
+        // refresh failed — fall through with the original 401 response
+      }
+    }
+    return response;
+  };
+
+  fetchWithRefresh()
     .then(async (response) => {
       if (!response.ok) {
         const text = await response.text();

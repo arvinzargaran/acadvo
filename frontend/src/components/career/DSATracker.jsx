@@ -26,7 +26,14 @@ export default function DSATracker() {
 
   return (
     <Card>
-      <h3 className="text-white font-semibold mb-3">DSA Prep Tracker</h3>
+      <div className="flex items-center gap-3 mb-4">
+        <span className="icon-chip w-8 h-8 rounded-lg flex items-center justify-center text-primary-500">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+          </svg>
+        </span>
+        <h3 className="font-display text-xl tracking-tight text-dark-50">DSA Prep Tracker</h3>
+      </div>
       <div className="space-y-3">
         {defaultCategories.map((cat, i) => {
           const pct = Math.min(100, Math.round((counts[i] / cat.target) * 100));
@@ -35,16 +42,16 @@ export default function DSATracker() {
               <div className="flex items-center justify-between text-sm mb-1">
                 <span className="text-dark-300">{cat.name}</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-dark-400">{counts[i]} / {cat.target}</span>
+                  <span className="font-display tabular-nums text-dark-400">{counts[i]} / {cat.target}</span>
                   <button
                     onClick={() => update(i, -1)}
-                    className="w-6 h-6 rounded bg-dark-700 text-dark-300 hover:text-white text-xs"
+                    className="w-6 h-6 rounded bg-dark-700 text-dark-300 hover:text-dark-50 text-xs"
                   >
                     -
                   </button>
                   <button
                     onClick={() => update(i, 1)}
-                    className="w-6 h-6 rounded bg-dark-700 text-dark-300 hover:text-white text-xs"
+                    className="w-6 h-6 rounded bg-dark-700 text-dark-300 hover:text-dark-50 text-xs"
                   >
                     +
                   </button>

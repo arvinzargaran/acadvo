@@ -58,10 +58,10 @@ export default function MonthlyView({ events, monthOffset = 0 }) {
   return (
     <>
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold text-white">{monthLabel}</h2>
+        <h2 className="font-display text-2xl text-dark-50">{monthLabel}</h2>
 
         {/* Calendar grid */}
-        <div className="bg-dark-800 border border-dark-700/50 rounded-2xl overflow-hidden">
+        <div className="card-rich shadow-editorial ring-1 ring-black/5 dark:ring-white/10 border border-dark-700/50 rounded-2xl overflow-hidden">
           {/* Day name headers */}
           <div className="grid grid-cols-7 border-b border-dark-700/50">
             {DAY_NAMES.map(name => (
@@ -90,11 +90,11 @@ export default function MonthlyView({ events, monthOffset = 0 }) {
                     }`}
                   >
                     {/* Day number */}
-                    <span className={`text-xs font-semibold block mb-1.5 ${
+                    <span className={`font-display tabular-nums text-sm block mb-1.5 ${
                       cell.isToday
                         ? 'text-emerald-400'
                         : cell.events.length > 0
-                          ? 'text-white'
+                          ? 'text-dark-50'
                           : 'text-dark-500 group-hover/cell:text-dark-300'
                     }`}>
                       {cell.isToday ? (

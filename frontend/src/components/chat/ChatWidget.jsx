@@ -26,6 +26,12 @@ export default function ChatWidget() {
   const [conversations, setConversations] = useState([]);
   const [showConvList, setShowConvList] = useState(false);
   const messagesEndRef = useRef(null);
+  // Live mirror of conversationId so the open-chat poll reads the current value
+  // rather than the (possibly null) value captured when the event fired.
+  const conversationIdRef = useRef(conversationId);
+  useEffect(() => {
+    conversationIdRef.current = conversationId;
+  }, [conversationId]);
 
   useEffect(() => {
     if (isOpen && !conversationId) {
@@ -39,11 +45,13 @@ export default function ChatWidget() {
       setIsOpen(true);
       const msg = e.detail?.message;
       if (msg) {
-        // Wait for conversation to be ready, then send
+        // Wait for the conversation to be ready, then send. Reads the ref (live
+        // value) and gives up after ~15s so it can't poll forever.
+        let attempts = 0;
         const trySend = () => {
-          if (conversationId) {
+          if (conversationIdRef.current) {
             sendMessage(msg);
-          } else {
+          } else if (attempts++ < 30) {
             setTimeout(trySend, 500);
           }
         };
@@ -52,7 +60,7 @@ export default function ChatWidget() {
     }
     window.addEventListener('open-chat-widget', handleOpenChat);
     return () => window.removeEventListener('open-chat-widget', handleOpenChat);
-  }, [conversationId, sendMessage]);
+  }, [sendMessage]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -111,7 +119,7 @@ export default function ChatWidget() {
         className="fixed bottom-6 right-6 z-[60] group"
         data-tour="chat-widget"
       >
-        <div className="bg-primary-600 group-hover:bg-primary-700 rounded-full w-14 h-14 flex items-center justify-center shadow-lg transition-colors">
+        <div className="btn-accent rounded-full w-14 h-14 flex items-center justify-center transition-transform group-hover:scale-105 group-active:scale-95">
           <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
@@ -123,13 +131,18 @@ export default function ChatWidget() {
   return (
     <div className="fixed bottom-6 right-6 z-[60] flex flex-col items-end gap-3">
       {/* Chat Panel */}
-      <div className="w-[calc(100vw-3rem)] max-w-[400px] h-[520px] max-h-[calc(100vh-7rem)] bg-dark-900/95 backdrop-blur-xl border border-dark-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-scale-in">
+      <div className="w-[calc(100vw-3rem)] max-w-[400px] h-[520px] max-h-[calc(100vh-7rem)] bg-dark-900/95 backdrop-blur-xl border border-dark-700 rounded-2xl shadow-editorial flex flex-col overflow-hidden animate-scale-in">
         {/* Header */}
         <div className="px-4 py-3 border-b border-dark-700 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
+            <span className="icon-chip flex h-8 w-8 items-center justify-center rounded-lg text-primary-600 dark:text-primary-400">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+              </svg>
+            </span>
             <button
               onClick={() => setShowConvList(!showConvList)}
-              className="text-sm font-semibold text-white hover:text-primary-400 transition-colors"
+              className="font-display text-base text-dark-50 hover:text-primary-600 dark:hover:text-primary-400 transition-colors leading-none"
             >
               Acadvo AI
             </button>
@@ -137,7 +150,7 @@ export default function ChatWidget() {
           <div className="flex items-center gap-1">
             <button
               onClick={handleNewChat}
-              className="p-1.5 text-dark-400 hover:text-white transition-colors rounded-lg hover:bg-dark-700"
+              className="p-1.5 text-dark-400 hover:text-dark-50 transition-colors rounded-lg hover:bg-dark-700"
               title="New chat"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -146,7 +159,7 @@ export default function ChatWidget() {
             </button>
             <button
               onClick={() => setIsOpen(false)}
-              className="p-1.5 text-dark-400 hover:text-white transition-colors rounded-lg hover:bg-dark-700"
+              className="p-1.5 text-dark-400 hover:text-dark-50 transition-colors rounded-lg hover:bg-dark-700"
               title="Close"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -169,7 +182,7 @@ export default function ChatWidget() {
                 <button
                   onClick={() => handleSelectConversation(conv.id)}
                   className={`flex-1 text-left px-4 py-2 text-sm truncate ${
-                    conv.id === conversationId ? 'text-white' : 'text-dark-300'
+                    conv.id === conversationId ? 'text-dark-50' : 'text-dark-300'
                   }`}
                 >
                   {conv.title || 'New conversation'}
@@ -195,7 +208,7 @@ export default function ChatWidget() {
               <button
                 key={action}
                 onClick={() => handleQuickAction(action)}
-                className="bg-dark-800 hover:bg-dark-700 text-dark-300 hover:text-white text-xs px-3 py-1.5 rounded-full transition-colors border border-dark-600"
+                className="bg-dark-800 hover:bg-dark-700 text-dark-300 hover:text-dark-50 text-xs px-3 py-1.5 rounded-full transition-colors border border-dark-600"
               >
                 {action}
               </button>
@@ -254,7 +267,7 @@ export default function ChatWidget() {
       {/* Minimize button */}
       <button
         onClick={() => setIsOpen(false)}
-        className="bg-primary-600 hover:bg-primary-700 rounded-full w-10 h-10 flex items-center justify-center shadow-lg transition-colors"
+        className="btn-accent rounded-full w-10 h-10 flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
       >
         <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />

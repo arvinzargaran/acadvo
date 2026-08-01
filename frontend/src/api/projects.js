@@ -25,9 +25,9 @@ export function createMilestone(projectId, data) {
 }
 
 export function updateMilestone(id, data) {
-  return client.put(`/milestones/${id}`, data);
+  return client.put(`/projects/milestones/${id}`, data);
 }
 
 export function deleteMilestone(id) {
-  return client.delete(`/milestones/${id}`);
+  return client.delete(`/projects/milestones/${id}`);
 }

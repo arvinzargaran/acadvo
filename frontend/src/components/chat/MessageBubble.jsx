@@ -13,11 +13,11 @@ export default function MessageBubble({ role, content, toolCalls }) {
       <div
         className={`max-w-[80%] px-4 py-3 ${
           isUser
-            ? 'bg-primary-600 text-white rounded-2xl rounded-br-sm'
-            : 'bg-dark-800 border border-dark-700 text-white rounded-2xl rounded-bl-sm'
+            ? 'bg-primary-600 text-white rounded-2xl rounded-br-sm shadow-sm'
+            : 'bg-dark-800 border border-dark-700 text-dark-50 rounded-2xl rounded-bl-sm'
         }`}
       >
-        <div className="prose prose-invert prose-sm max-w-none">
+        <div className={`prose prose-sm max-w-none ${isUser ? 'prose-invert' : 'dark:prose-invert'}`}>
           <ReactMarkdown>{content}</ReactMarkdown>
         </div>
       </div>

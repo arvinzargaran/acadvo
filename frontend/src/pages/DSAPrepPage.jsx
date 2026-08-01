@@ -4,6 +4,8 @@ import ProgressRing from '../components/ui/ProgressRing';
 import ProgressBar from '../components/ui/ProgressBar';
 import Button from '../components/ui/Button';
 import Skeleton from '../components/ui/Skeleton';
+import PageHeader from '../components/ui/PageHeader';
+import Badge from '../components/ui/Badge';
 import { listProblems, createProblem, updateProblem, deleteProblem, getStats, getSettings, updateSettings } from '../api/dsa';
 
 const WEEKLY_GOAL_KEY = 'dsa_weekly_goal';
@@ -181,15 +183,16 @@ export default function DSAPrepPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-dark-50">DSA Prep</h1>
-          <p className="text-dark-400 text-sm mt-1">Track your problem-solving progress and stay interview-ready.</p>
-        </div>
-        <Button variant="primary" onClick={() => setShowAdd(!showAdd)}>
-          {showAdd ? 'Cancel' : '+ Add Problem'}
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="DSA PREP"
+        title="DSA Prep"
+        subtitle="Track your problem-solving progress and stay interview-ready."
+        actions={
+          <Button variant={showAdd ? 'secondary' : 'accent'} onClick={() => setShowAdd(!showAdd)}>
+            {showAdd ? 'Cancel' : '+ Add Problem'}
+          </Button>
+        }
+      />
 
       {/* Add Problem Form */}
       {showAdd && (
@@ -260,8 +263,8 @@ export default function DSAPrepPage() {
           {/* Difficulty Progress */}
           <Card>
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-semibold text-white">Problem Progress</h2>
-              <div className="text-sm text-dark-400">{totalSolved} solved</div>
+              <h2 className="font-display text-xl text-dark-50">Problem Progress</h2>
+              <div className="text-sm text-dark-400 tabular-nums">{totalSolved} solved</div>
             </div>
             <div className="grid grid-cols-3 gap-4 mb-6">
               {[
@@ -270,8 +273,8 @@ export default function DSAPrepPage() {
                 { label: 'Hard', count: hardSolved, color: DIFFICULTY_COLORS.hard },
               ].map(d => (
                 <div key={d.label} className="text-center">
-                  <div className="text-3xl font-bold" style={{ color: d.color }}>{d.count}</div>
-                  <div className="text-xs text-dark-400 mt-1">{d.label}</div>
+                  <div className="font-display tabular-nums text-4xl" style={{ color: d.color }}>{d.count}</div>
+                  <div className="text-xs uppercase tracking-wider text-dark-400 mt-1">{d.label}</div>
                 </div>
               ))}
             </div>
@@ -286,7 +289,7 @@ export default function DSAPrepPage() {
           {/* Problem List */}
           <Card>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-white">Problems</h2>
+              <h2 className="font-display text-xl text-dark-50">Problems</h2>
               <select
                 value={patternFilter}
                 onChange={e => setPatternFilter(e.target.value)}
@@ -298,13 +301,23 @@ export default function DSAPrepPage() {
             </div>
 
             {filteredProblems.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-dark-400">
-                  {problems.length === 0
-                    ? 'No problems yet. Click "+ Add Problem" to get started.'
-                    : 'No problems match this filter.'}
-                </p>
-              </div>
+              problems.length === 0 ? (
+                <div className="text-center py-10">
+                  <p className="font-display text-2xl text-dark-50">No problems tracked yet</p>
+                  <p className="text-dark-400 text-sm mt-2 max-w-xs mx-auto">
+                    Log the problems you grind through and watch your patterns and streak build up over the weeks.
+                  </p>
+                  {!showAdd && (
+                    <Button variant="accent" className="mt-5" onClick={() => setShowAdd(true)}>
+                      Add your first problem
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-dark-400">No problems match this filter.</p>
+                </div>
+              )
             ) : (
               <div className="space-y-2">
                 {filteredProblems.map(problem => (
@@ -334,8 +347,8 @@ export default function DSAPrepPage() {
                         ) : (
                           <span className="text-sm font-medium text-white truncate">{problem.title}</span>
                         )}
-                        <span className="text-[10px] text-dark-500 bg-dark-700 px-1.5 py-0.5 rounded flex-shrink-0">
-                          {problem.pattern}
+                        <span className="flex-shrink-0">
+                          <Badge color="gray" variant="label">{problem.pattern}</Badge>
                         </span>
                       </div>
                       {problem.notes && (
@@ -394,7 +407,7 @@ export default function DSAPrepPage() {
         <div className="space-y-6">
           {/* Weekly Goal */}
           <Card>
-            <h2 className="text-lg font-semibold text-white mb-4">Weekly Goal</h2>
+            <h2 className="font-display text-xl text-dark-50 mb-4">Weekly Goal</h2>
             <div className="flex flex-col items-center">
               <ProgressRing
                 value={Math.min(100, (weeklySolved / weeklyGoal) * 100)}
@@ -402,8 +415,8 @@ export default function DSAPrepPage() {
                 strokeWidth={10}
                 label="this week"
               />
-              <p className="mt-3 text-sm text-dark-300">
-                <span className="text-white font-semibold">{weeklySolved}</span> / {weeklyGoal} problems
+              <p className="mt-3 text-sm text-dark-400 tabular-nums">
+                <span className="text-dark-50 font-semibold">{weeklySolved}</span> / {weeklyGoal} problems
               </p>
               <div className="flex items-center gap-2 mt-3">
                 <label className="text-xs text-dark-400">Goal:</label>
@@ -422,19 +435,19 @@ export default function DSAPrepPage() {
 
           {/* Stats */}
           <Card>
-            <h2 className="text-lg font-semibold text-white mb-4">Stats</h2>
+            <h2 className="font-display text-xl text-dark-50 mb-4">Stats</h2>
             <div className="space-y-3">
               <div className="flex justify-between text-sm">
                 <span className="text-dark-400">Total Solved</span>
-                <span className="text-white font-semibold">{totalSolved}</span>
+                <span className="text-dark-50 font-semibold tabular-nums">{totalSolved}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-dark-400">Total Problems</span>
-                <span className="text-white font-semibold">{stats?.total_problems || 0}</span>
+                <span className="text-dark-50 font-semibold tabular-nums">{stats?.total_problems || 0}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-dark-400">This Week</span>
-                <span className="text-white font-semibold">{weeklySolved}</span>
+                <span className="text-dark-50 font-semibold tabular-nums">{weeklySolved}</span>
               </div>
             </div>
           </Card>
@@ -442,13 +455,13 @@ export default function DSAPrepPage() {
           {/* Top Patterns */}
           {topPatterns.length > 0 && (
             <Card>
-              <h2 className="text-lg font-semibold text-white mb-4">Top Patterns</h2>
+              <h2 className="font-display text-xl text-dark-50 mb-4">Top Patterns</h2>
               <div className="space-y-3">
                 {topPatterns.map((p, i) => (
                   <div key={p.pattern} className="flex items-center gap-3">
-                    <span className="text-xs text-dark-500 w-4">{i + 1}.</span>
+                    <span className="font-display text-sm text-primary-500 w-4 tabular-nums">{i + 1}</span>
                     <span className="text-sm text-dark-200 flex-1">{p.pattern}</span>
-                    <span className="text-sm text-white font-semibold">{p.count}</span>
+                    <span className="text-sm text-dark-50 font-semibold tabular-nums">{p.count}</span>
                   </div>
                 ))}
               </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Card from '../ui/Card';
 import Skeleton from '../ui/Skeleton';
+import Badge from '../ui/Badge';
 import { reviewResume } from '../../api/career';
 import { getErrorMessage } from '../../utils/errors';
 
@@ -49,7 +50,7 @@ export default function ResumeReview() {
         <div className="flex items-center gap-3 mb-5">
           <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-500 flex-shrink-0" />
           <div>
-            <p className="text-white text-sm font-medium">Analyzing your resume...</p>
+            <p className="text-dark-50 text-sm font-medium">Analyzing your resume...</p>
             <p className="text-dark-400 text-xs mt-0.5">Your AI advisor is reviewing scoring, strengths, and ATS fit.</p>
           </div>
         </div>
@@ -79,10 +80,17 @@ export default function ResumeReview() {
     return (
       <Card>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-white font-semibold">Resume Review</h3>
+          <div className="flex items-center gap-3">
+            <span className="icon-chip w-8 h-8 rounded-lg flex items-center justify-center text-primary-500">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </span>
+            <h3 className="font-display text-xl tracking-tight text-dark-50">Resume Review</h3>
+          </div>
           <button
             onClick={() => setReview(null)}
-            className="text-dark-400 hover:text-white text-sm transition-colors"
+            className="text-dark-400 hover:text-dark-50 text-sm transition-colors"
           >
             Upload another
           </button>
@@ -92,10 +100,10 @@ export default function ResumeReview() {
         <div className="flex items-center gap-4 mb-4">
           {review.overall_score != null && (
             <div className="flex-shrink-0 text-center">
-              <p className={`text-3xl font-bold ${scoreColor(review.overall_score)}`}>
-                {review.overall_score}/10
+              <p className={`font-display tabular-nums text-4xl ${scoreColor(review.overall_score)}`}>
+                {review.overall_score}<span className="text-lg text-dark-400">/10</span>
               </p>
-              <p className="text-dark-500 text-xs">Score</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-dark-400">Score</p>
             </div>
           )}
           <p className="text-dark-300 text-sm">{review.summary}</p>
@@ -122,7 +130,7 @@ export default function ResumeReview() {
             <div className="space-y-2">
               {review.improvements.map((imp, i) => (
                 <div key={i} className="bg-dark-700/50 rounded-lg p-3">
-                  <p className="text-white text-sm font-medium">{imp.area}</p>
+                  <p className="text-dark-50 text-sm font-medium">{imp.area}</p>
                   <p className="text-dark-400 text-xs mt-0.5">{imp.issue}</p>
                   <p className="text-primary-400 text-xs mt-1">{imp.suggestion}</p>
                 </div>
@@ -137,9 +145,7 @@ export default function ResumeReview() {
             <h4 className="text-orange-400 text-sm font-medium mb-2">Missing Sections</h4>
             <div className="flex flex-wrap gap-2">
               {review.missing_sections.map((s, i) => (
-                <span key={i} className="text-xs bg-orange-500/10 text-orange-300 rounded-full px-2.5 py-1">
-                  {s}
-                </span>
+                <Badge key={i} color="yellow" variant="label">{s}</Badge>
               ))}
             </div>
           </div>
@@ -172,7 +178,14 @@ export default function ResumeReview() {
 
   return (
     <Card>
-      <h3 className="text-white font-semibold mb-3">Resume / Cover Letter Review</h3>
+      <div className="flex items-center gap-3 mb-3">
+        <span className="icon-chip w-8 h-8 rounded-lg flex items-center justify-center text-primary-500">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        </span>
+        <h3 className="font-display text-xl tracking-tight text-dark-50">Resume / Cover Letter Review</h3>
+      </div>
       {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
       <div
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}

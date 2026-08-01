@@ -89,8 +89,8 @@ export default function GPACalculator({ compact = false, bento = false }) {
         <h3 className="text-white font-semibold mb-3">GPA</h3>
         <div className="flex items-end gap-4 mb-3">
           <div>
-            <p className="text-dark-400 text-xs">Cumulative</p>
-            <p className={`text-3xl font-bold ${textColor}`}>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-dark-400">Cumulative</p>
+            <p className={`font-display tabular-nums text-3xl sm:text-4xl mt-1 ${textColor}`}>
               {gpa.cumulative_gpa.toFixed(2)}
               <span className="text-base text-dark-500 font-normal"> / {gpa.scale_max}</span>
             </p>
