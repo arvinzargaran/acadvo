@@ -1,4 +1,11 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
+
+# The only algorithms this app is built for. Tokens are signed with a shared
+# secret, so allowing an asymmetric or "none" algorithm here would let a forged
+# token be verified against the secret as if it were a public key — the classic
+# JWT algorithm-confusion attack.
+_ALLOWED_JWT_ALGORITHMS = {"HS256", "HS384", "HS512"}
 
 
 class Settings(BaseSettings):
@@ -52,6 +59,23 @@ class Settings(BaseSettings):
     SENTRY_TRACES_SAMPLE_RATE: float = 0.0
 
     model_config = {"env_file": ".env", "extra": "ignore"}
+
+    @field_validator("JWT_ALGORITHM")
+    @classmethod
+    def _check_jwt_algorithm(cls, v: str) -> str:
+        if v not in _ALLOWED_JWT_ALGORITHMS:
+            raise ValueError(
+                f"JWT_ALGORITHM must be one of {sorted(_ALLOWED_JWT_ALGORITHMS)}, got {v!r}"
+            )
+        return v
+
+    @field_validator("COOKIE_SAMESITE")
+    @classmethod
+    def _check_cookie_samesite(cls, v: str) -> str:
+        normalized = v.lower()
+        if normalized not in {"lax", "strict", "none"}:
+            raise ValueError(f"COOKIE_SAMESITE must be lax, strict or none, got {v!r}")
+        return normalized
 
 
 settings = Settings()

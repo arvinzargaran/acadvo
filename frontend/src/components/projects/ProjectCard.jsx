@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import MilestoneList from './MilestoneList';
 import Badge from '../ui/Badge';
+import { safeExternalUrl } from '../../utils/urls';
 
 const STATUS_CONFIG = {
   not_started: { label: 'Not Started', color: 'gray' },
@@ -99,13 +100,13 @@ export default function ProjectCard({ project, index = 0, onUpdateMilestone, onE
               {project.hard_deadline}{daysLeft !== null && ` (${daysLeft}d)`}
             </span>
           )}
-          {project.repo_url && (
-            <a href={project.repo_url} target="_blank" rel="noopener noreferrer" className="text-dark-400 hover:text-dark-50 transition-colors">
+          {safeExternalUrl(project.repo_url) && (
+            <a href={safeExternalUrl(project.repo_url)} target="_blank" rel="noopener noreferrer" className="text-dark-400 hover:text-dark-50 transition-colors">
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 .3a12 12 0 00-3.8 23.38c.6.11.82-.26.82-.58v-2.02c-3.34.73-4.04-1.61-4.04-1.61a3.18 3.18 0 00-1.33-1.76c-1.09-.74.08-.73.08-.73a2.52 2.52 0 011.84 1.24 2.56 2.56 0 003.5 1 2.56 2.56 0 01.76-1.6c-2.67-.3-5.47-1.33-5.47-5.93a4.64 4.64 0 011.24-3.22 4.3 4.3 0 01.12-3.18s1-.33 3.3 1.23a11.38 11.38 0 016 0c2.28-1.56 3.29-1.23 3.29-1.23a4.3 4.3 0 01.12 3.18 4.64 4.64 0 011.23 3.22c0 4.61-2.81 5.63-5.48 5.92a2.87 2.87 0 01.82 2.23v3.29c0 .32.21.7.82.58A12 12 0 0012 .3z"/></svg>
             </a>
           )}
-          {project.live_url && (
-            <a href={project.live_url} target="_blank" rel="noopener noreferrer" className="text-dark-400 hover:text-dark-50 transition-colors">
+          {safeExternalUrl(project.live_url) && (
+            <a href={safeExternalUrl(project.live_url)} target="_blank" rel="noopener noreferrer" className="text-dark-400 hover:text-dark-50 transition-colors">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
               </svg>

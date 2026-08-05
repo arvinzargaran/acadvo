@@ -23,6 +23,7 @@ JSON log record schema (top-level keys):
 
 import json
 import logging
+import re
 import time
 import uuid
 from contextvars import ContextVar
@@ -91,8 +92,37 @@ class RequestIdFilter(logging.Filter):
         return True
 
 
+class ScrubAccessLogFilter(logging.Filter):
+    """Redact secret-bearing paths from uvicorn's access log.
+
+    Our own request middleware scrubs the path it logs, but uvicorn writes an
+    independent access line through the ``uvicorn.access`` logger, which never
+    passes through that middleware. Without this filter the calendar feed token
+    is still emitted in full on every poll — the redaction would look like it
+    worked while the credential kept leaking from the line next to it.
+
+    uvicorn formats access records as
+    ``'%s - "%s %s HTTP/%s" %d'`` with args
+    ``(client_addr, method, full_path, http_version, status_code)``.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) == 5 and isinstance(args[2], str):
+            scrubbed = scrub_path(args[2])
+            if scrubbed != args[2]:
+                record.args = (args[0], args[1], scrubbed, args[3], args[4])
+        return True
+
+
 def configure_logging() -> None:
     """Attach the JSON handler to the ``acadvo`` logger namespace (idempotent)."""
+    # Applied regardless of the guard below: uvicorn installs its access logger
+    # after import, and this must be attached whenever the app is configured.
+    access_logger = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, ScrubAccessLogFilter) for f in access_logger.filters):
+        access_logger.addFilter(ScrubAccessLogFilter())
+
     logger = logging.getLogger("acadvo")
     if getattr(logger, "_acadvo_configured", False):
         return
@@ -114,6 +144,23 @@ def configure_logging() -> None:
 
 REQUEST_ID_HEADER = "X-Request-ID"
 _request_logger = logging.getLogger("acadvo.request")
+
+# Paths whose URL *is* a secret. /calendar/feed/{token}.ics authenticates with
+# the token in the path, and calendar clients re-poll it every few hours — so
+# logging the raw path would sprinkle a permanent, non-expiring credential for
+# a user's full academic schedule through the application logs, any log
+# aggregator, and every Sentry breadcrumb.
+_SECRET_PATH_PATTERNS = (
+    (re.compile(r"^/calendar/feed/[^/]+\.ics$"), "/calendar/feed/<redacted>.ics"),
+)
+
+
+def scrub_path(path: str) -> str:
+    """Replace secret-bearing URL path segments with a placeholder."""
+    for pattern, replacement in _SECRET_PATH_PATTERNS:
+        if pattern.match(path):
+            return replacement
+    return path
 
 
 def install_request_id_middleware(app) -> None:
@@ -138,7 +185,7 @@ def install_request_id_middleware(app) -> None:
                 "request completed",
                 extra={
                     "http_method": request.method,
-                    "path": request.url.path,
+                    "path": scrub_path(request.url.path),
                     "status_code": response.status_code,
                     "duration_ms": duration_ms,
                 },
@@ -150,7 +197,7 @@ def install_request_id_middleware(app) -> None:
                 "request failed",
                 extra={
                     "http_method": request.method,
-                    "path": request.url.path,
+                    "path": scrub_path(request.url.path),
                     "duration_ms": duration_ms,
                 },
             )
@@ -184,10 +231,28 @@ def init_sentry() -> bool:
         )
         return False
 
+    def _scrub_event(event, hint):
+        """Redact secret-bearing URLs before anything leaves the process.
+
+        Sentry attaches the full request URL to every event. For the calendar
+        feed that URL is the credential itself, so without this an error report
+        hands a third-party service permanent read access to a user's schedule.
+        """
+        request = event.get("request")
+        if isinstance(request, dict) and isinstance(request.get("url"), str):
+            url = request["url"]
+            scheme, _, rest = url.partition("://")
+            host, slash, path = rest.partition("/")
+            scrubbed = scrub_path(f"{slash}{path}")
+            if scrubbed != f"{slash}{path}":
+                request["url"] = f"{scheme}://{host}{scrubbed}"
+        return event
+
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
         traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
         send_default_pii=False,
+        before_send=_scrub_event,
     )
     _sentry_logger.info(
         "sentry initialised",

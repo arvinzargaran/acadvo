@@ -1,21 +1,30 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router';
 import { verifyEmail } from '../api/auth';
 import Card from '../components/ui/Card';
+import { useAuth } from '../context/AuthContext';
 
 export default function VerifyEmailPage() {
   const [searchParams] = useSearchParams();
+  const { refreshUser } = useAuth();
   const token = searchParams.get('token') || '';
   const [status, setStatus] = useState(token ? 'verifying' : 'notoken');
   const ran = useRef(false);
 
   useEffect(() => {
     if (!token || ran.current) return;
-    ran.current = true; // guard against React 18 StrictMode double-invoke
+    ran.current = true; // guard against StrictMode's double-invoke
     verifyEmail(token)
-      .then(() => setStatus('success'))
+      .then(async () => {
+        setStatus('success');
+        // Re-fetch the user so `email_verified` is current — otherwise the
+        // "verify your email" banner keeps showing after a successful
+        // verification, because the context still holds the stale record.
+        // Harmless when nobody is signed in; refreshUser swallows the 401.
+        await refreshUser();
+      })
       .catch(() => setStatus('error'));
-  }, [token]);
+  }, [token, refreshUser]);
 
   const messages = {
     verifying: { title: 'Verifying your email…', body: 'One moment.', color: 'text-dark-200', eyebrow: 'Please wait' },

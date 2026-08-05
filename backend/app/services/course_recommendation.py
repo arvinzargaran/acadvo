@@ -4,7 +4,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.client import get_groq_client
+from app.ai.client import acomplete, get_groq_client
 from app.config import settings
 from app.models.course_recommendation import CourseRecommendation
 from app.models.degree import Course, DegreeRequirement, CourseStatus
@@ -158,7 +158,8 @@ Return results as a JSON array. Return ONLY valid JSON, no markdown fences.
 If no courses match, return an empty array [].
 Find up to 8 matching courses."""
 
-    response = client.chat.completions.create(
+    response = await acomplete(
+        client,
         model=settings.GROQ_MODEL,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=2048,
@@ -275,7 +276,8 @@ Return a JSON array of objects with these exact keys:
 
 Return ONLY valid JSON, no markdown fences, no extra text."""
 
-    response = client.chat.completions.create(
+    response = await acomplete(
+        client,
         model=settings.GROQ_MODEL,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=4096,

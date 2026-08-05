@@ -4,8 +4,9 @@ import io
 import json
 import re
 
-from app.ai.client import get_groq_client
+from app.ai.client import acomplete, get_groq_client, run_blocking
 from app.config import settings
+from app.services.uploads import pdf_to_text, spreadsheet_to_text
 
 SPREADSHEET_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -217,32 +218,12 @@ Rules:
 - Return ONLY valid JSON, no markdown fences, no extra text"""
 
 
-def _spreadsheet_to_text(file_bytes: bytes, mime_type: str) -> str:
-    if mime_type == "text/csv":
-        return file_bytes.decode("utf-8", errors="replace")
-
-    import openpyxl
-    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
-    lines = []
-    for sheet_name in wb.sheetnames:
-        ws = wb[sheet_name]
-        lines.append(f"=== Sheet: {sheet_name} ===")
-        for row in ws.iter_rows(values_only=True):
-            cells = [str(c) if c is not None else "" for c in row]
-            lines.append("\t".join(cells))
-    wb.close()
-    return "\n".join(lines)
-
-
-def _pdf_to_text(file_bytes: bytes) -> str:
-    import pdfplumber
-    text_parts = []
-    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-        for page in pdf.pages:
-            text = page.extract_text()
-            if text:
-                text_parts.append(text)
-    return "\n\n".join(text_parts)
+# Extraction lives in services.uploads, where it is bounded by page/sheet/row
+# and character caps — a 10 MB PDF or XLSX is a compressed container and can
+# otherwise expand into enough pages or cells to exhaust a worker. Both are
+# blocking and CPU-bound, so every caller wraps them in run_blocking.
+_spreadsheet_to_text = spreadsheet_to_text
+_pdf_to_text = pdf_to_text
 
 
 # ── Post-processing ──────────────────────────────────────────────────
@@ -419,15 +400,17 @@ async def parse_degree_document(file_bytes: bytes, mime_type: str) -> dict:
     client = get_groq_client()
 
     if mime_type == "application/pdf":
-        content_text = _pdf_to_text(file_bytes)
-        response = client.chat.completions.create(
+        content_text = await run_blocking(_pdf_to_text, file_bytes)
+        response = await acomplete(
+            client,
             model=settings.GROQ_MODEL,
             messages=[{"role": "user", "content": f"{EXTRACTION_PROMPT}\n\nDocument content:\n\n{content_text}"}],
             max_tokens=4096,
         )
     elif mime_type in SPREADSHEET_MIME_TYPES:
-        spreadsheet_text = _spreadsheet_to_text(file_bytes, mime_type)
-        response = client.chat.completions.create(
+        spreadsheet_text = await run_blocking(_spreadsheet_to_text, file_bytes, mime_type)
+        response = await acomplete(
+            client,
             model=settings.GROQ_MODEL,
             messages=[{"role": "user", "content": f"{EXTRACTION_PROMPT}\n\nSpreadsheet content:\n\n{spreadsheet_text}"}],
             max_tokens=4096,
@@ -435,7 +418,8 @@ async def parse_degree_document(file_bytes: bytes, mime_type: str) -> dict:
     else:
         # Image — use vision model
         b64 = base64.b64encode(file_bytes).decode()
-        response = client.chat.completions.create(
+        response = await acomplete(
+            client,
             model=settings.GROQ_VISION_MODEL,
             messages=[{
                 "role": "user",

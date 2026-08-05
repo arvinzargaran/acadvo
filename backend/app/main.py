@@ -1,7 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from groq import RateLimitError as GroqRateLimitError
@@ -21,6 +21,10 @@ configure_logging()
 init_sentry()
 
 logger = logging.getLogger(__name__)
+
+# Header the SPA must send on state-changing requests. Not a token — see the
+# csrf_protection middleware below for why presence alone is sufficient.
+CSRF_HEADER = "X-Requested-With"
 
 # Ensure our own ("app.*") loggers emit — uvicorn only configures its own loggers,
 # so without this, INFO logs (e.g. dev email links) would be swallowed.
@@ -59,10 +63,13 @@ async def lifespan(app: FastAPI):
             )
         if any(o.startswith("http://") for o in origins):
             logger.warning("CORS_ORIGINS contains a plain-http origin in production: %s", origins)
-        if settings.COOKIE_SAMESITE.lower() == "none":
-            logger.warning(
-                "COOKIE_SAMESITE=none disables SameSite CSRF protection; ensure a CSRF "
-                "defense is in place for state-changing requests."
+        if settings.COOKIE_SAMESITE == "none":
+            raise RuntimeError(
+                "COOKIE_SAMESITE=none removes the browser's SameSite CSRF protection "
+                "from the auth cookies. Use 'lax' (the default). If the app and API are "
+                "on different hostnames, put them under one registrable domain "
+                "(app.example.com + api.example.com) — that is same-site, so 'lax' "
+                "cookies are still sent."
             )
         if not settings.SMTP_HOST:
             logger.warning(
@@ -109,13 +116,53 @@ async def groq_rate_limit_handler(request: Request, exc: GroqRateLimitError):
 # space-prefixed origin. The lifespan safety check already strips; match it here.
 _cors_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
-)
+
+# ── Middleware ───────────────────────────────────────────────────────
+#
+# ORDER MATTERS, and Starlette's is the reverse of the reading order: each
+# add_middleware call wraps everything registered before it, so the LAST one
+# registered is the OUTERMOST. The stack below therefore ends up as
+#
+#     request-id  ->  CORS  ->  security headers  ->  CSRF  ->  router
+#
+# CORS must sit OUTSIDE the CSRF check. When CSRF rejects a request it returns
+# early without calling the rest of the stack, so if CORS were inside it, that
+# 403 would carry no Access-Control-Allow-Origin header and the browser would
+# surface an opaque "Failed to fetch" instead of the actual status — the request
+# is still blocked either way, but nobody can debug it and the SPA cannot show a
+# real error message.
+
+
+# Methods that cannot change state, so they need no CSRF check. HEAD/OPTIONS are
+# included because the browser issues them itself (preflight).
+_CSRF_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
+
+
+@app.middleware("http")
+async def csrf_protection(request: Request, call_next):
+    """Require a custom header on every state-changing request.
+
+    Auth is cookie-based, so the browser attaches credentials automatically and
+    SameSite=lax is the only thing standing between us and CSRF. That is decent
+    but single-layer: it does not cover a hostile page on a sibling subdomain
+    (a same-site origin, e.g. after a subdomain takeover), and it silently
+    weakens if a future deploy relaxes the cookie policy.
+
+    A required custom header closes that gap cheaply. An HTML form — the classic
+    CSRF vector — cannot set one at all, and any script that tries is forced
+    into a CORS preflight, which the origin allowlist above rejects. The header
+    value is irrelevant; only its presence matters, so there is no token to
+    store, rotate, or leak.
+    """
+    if request.method not in _CSRF_SAFE_METHODS and CSRF_HEADER not in request.headers:
+        return JSONResponse(
+            status_code=403,
+            content={
+                "detail": f"Missing {CSRF_HEADER} header. State-changing requests must be "
+                          "made by the application, not by a cross-site form."
+            },
+        )
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -128,25 +175,57 @@ async def security_headers(request: Request, call_next):
     return response
 
 
+# Registered after the CSRF middleware so it wraps it — see the ordering note
+# above. Preflight (OPTIONS) is handled here and short-circuits before reaching
+# the CSRF check, which is why OPTIONS is in _CSRF_SAFE_METHODS anyway.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", CSRF_HEADER],
+)
+
+
 # Added last so it wraps as much as possible (CORS, security headers, rate
 # limiting, routing): assigns/propagates X-Request-ID, binds it to the logging
 # context, and emits the single canonical request-completion log line.
 install_request_id_middleware(app)
 
+from app.deps import require_verified_email
 from app.routers import auth, users, conversations, degree, projects, career, suggestions, course_advisor, dashboard, dsa, study, calendar
+
+# Email verification gates the AI surface, not all writes.
+#
+# The practical abuse an unverified account enables is burning Groq budget from
+# a throwaway address — every AI call costs real money and the per-IP rate limit
+# does not stop someone cycling addresses. So the LLM-backed routers require a
+# verified email for state-changing requests, applied at the router level so a
+# newly added AI endpoint inherits the gate rather than silently opting out.
+#
+# Plain CRUD (courses, projects, career targets, DSA, study) stays open, because
+# onboarding is built from exactly those calls — gating them would leave every
+# new user unable to finish signup, which is a product outage, not a security
+# win. That data is the user's own, isolated per-account and rate-limited.
+#
+# The AI endpoints that live inside otherwise-CRUD routers carry the dependency
+# on the endpoint itself: degree's document/syllabus parsing and career's resume
+# review (see those routers).
+_verified = [Depends(require_verified_email)]
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(users.router, prefix="/users", tags=["users"])
-app.include_router(conversations.router, prefix="/conversations", tags=["conversations"])
+app.include_router(calendar.router, prefix="/calendar", tags=["calendar"])
+app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 app.include_router(degree.router, prefix="/degree", tags=["degree"])
 app.include_router(projects.router, prefix="/projects", tags=["projects"])
 app.include_router(career.router, prefix="/career", tags=["career"])
-app.include_router(suggestions.router, prefix="/suggestions", tags=["suggestions"])
-app.include_router(course_advisor.router, prefix="/course-advisor", tags=["course-advisor"])
-app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 app.include_router(dsa.router, prefix="/dsa", tags=["dsa"])
 app.include_router(study.router, prefix="/study", tags=["study"])
-app.include_router(calendar.router, prefix="/calendar", tags=["calendar"])
+
+app.include_router(conversations.router, prefix="/conversations", tags=["conversations"], dependencies=_verified)
+app.include_router(course_advisor.router, prefix="/course-advisor", tags=["course-advisor"], dependencies=_verified)
+app.include_router(suggestions.router, prefix="/suggestions", tags=["suggestions"], dependencies=_verified)
 
 
 @app.get("/health")

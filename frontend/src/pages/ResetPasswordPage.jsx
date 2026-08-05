@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { resetPassword } from '../api/auth';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import AuthLayout from '../components/layout/AuthLayout';
+import { MIN_PASSWORD_LENGTH, PASSWORD_HINT } from '../utils/password';
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
@@ -59,8 +60,8 @@ export default function ResetPasswordPage() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Min 8 characters"
-            minLength={8}
+            placeholder={PASSWORD_HINT}
+            minLength={MIN_PASSWORD_LENGTH}
             required
           />
           <Input

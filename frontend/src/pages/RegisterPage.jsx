@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -7,6 +7,7 @@ import Select from '../components/ui/Select';
 import AuthLayout from '../components/layout/AuthLayout';
 import { CANADIAN_UNIVERSITIES } from '../data/universities';
 import { PROGRAMS } from '../data/programs';
+import { MIN_PASSWORD_LENGTH, PASSWORD_HINT } from '../utils/password';
 
 export default function RegisterPage() {
   const { register, user } = useAuth();
@@ -91,9 +92,9 @@ export default function RegisterPage() {
             type="password"
             value={form.password}
             onChange={update('password')}
-            placeholder="Min 8 characters"
+            placeholder={PASSWORD_HINT}
             required
-            minLength={8}
+            minLength={MIN_PASSWORD_LENGTH}
           />
 
           <Input

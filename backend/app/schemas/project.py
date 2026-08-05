@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.weburl import WebUrl
+
 ProjectStatus = Literal["not_started", "in_progress", "deployed", "interview_ready"]
 MilestoneStatus = Literal["pending", "in_progress", "complete", "overdue"]
 
@@ -48,8 +50,8 @@ class ProjectCreate(BaseModel):
     priority: int = Field(ge=1, le=3)
     status: ProjectStatus = "not_started"
     tech_stack: str | None = None
-    repo_url: str | None = None
-    live_url: str | None = None
+    repo_url: WebUrl = None
+    live_url: WebUrl = None
     demo_url: str | None = None
     hard_deadline: date | None = None
     product_framing: str | None = None
@@ -62,8 +64,8 @@ class ProjectUpdate(BaseModel):
     priority: int | None = Field(default=None, ge=1, le=3)
     status: ProjectStatus | None = None
     tech_stack: str | None = None
-    repo_url: str | None = None
-    live_url: str | None = None
+    repo_url: WebUrl = None
+    live_url: WebUrl = None
     demo_url: str | None = None
     hard_deadline: date | None = None
     product_framing: str | None = None
@@ -77,8 +79,8 @@ class ProjectResponse(BaseModel):
     priority: int
     status: str
     tech_stack: str | None = None
-    repo_url: str | None = None
-    live_url: str | None = None
+    repo_url: WebUrl = None
+    live_url: WebUrl = None
     demo_url: str | None = None
     hard_deadline: date | None = None
     product_framing: str | None = None

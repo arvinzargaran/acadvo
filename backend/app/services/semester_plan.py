@@ -14,7 +14,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.client import get_groq_client
+from app.ai.client import acomplete, aiter_stream, get_groq_client
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -565,7 +565,8 @@ async def generate_semester_plan(
     prompt = _build_prompt(ctx)
 
     client = get_groq_client()
-    response = client.chat.completions.create(
+    response = await acomplete(
+        client,
         model=settings.GROQ_MODEL,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=8192,
@@ -730,7 +731,8 @@ async def generate_semester_plan_stream(
         prompt = _build_prompt(ctx)
 
         client = get_groq_client()
-        stream = client.chat.completions.create(
+        stream = await acomplete(
+            client,
             model=settings.GROQ_MODEL,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=8192,
@@ -745,7 +747,7 @@ async def generate_semester_plan_stream(
         scheduled_accum = set(ctx.get("completed_codes", set()))
         placed_accum: set[str] = set()
 
-        for chunk in stream:
+        async for chunk in aiter_stream(stream):
             delta = chunk.choices[0].delta.content
             if not delta:
                 continue

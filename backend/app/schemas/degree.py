@@ -50,15 +50,19 @@ class CourseCreate(BaseModel):
 
 
 class CourseUpdate(BaseModel):
-    course_code: str | None = None
-    course_name: str | None = None
-    credit_value: float | None = None
+    # Same bounds as CourseCreate. Validation that exists only on create is a
+    # gap, not a policy: an unbounded credit_value on update skews every GPA and
+    # credit total, and an over-length string reaches the DB as an unhandled
+    # DataError (a 500) instead of a 422.
+    course_code: str | None = Field(default=None, min_length=1, max_length=20)
+    course_name: str | None = Field(default=None, min_length=1, max_length=200)
+    credit_value: float | None = Field(default=None, ge=0, le=20)
     status: CourseStatusType | None = None
-    term: str | None = None
-    grade: str | None = None
+    term: str | None = Field(default=None, max_length=50)
+    grade: str | None = Field(default=None, max_length=10)
     requirement_bucket_id: uuid.UUID | None = None
     credential_id: uuid.UUID | None = None
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class CourseResponse(BaseModel):

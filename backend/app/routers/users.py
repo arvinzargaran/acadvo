@@ -9,17 +9,25 @@ from app.deps import get_current_user
 from app.limiter import limiter
 from app.models.user import User
 from app.schemas.auth import DeleteAccountRequest
+from app.schemas.password import Password
 from app.schemas.user import UserResponse, UserUpdate
 from app.services import calendar as calendar_service
 from app.services import user as user_service
-from app.services.auth import hash_password, verify_password
+from app.services.auth import (
+    create_access_token,
+    create_refresh_token,
+    hash_password,
+    revoke_all_refresh_tokens,
+    set_auth_cookies,
+    verify_password,
+)
 from app.services.career import get_readiness_score
 from app.services.schedule import get_all_user_events
 
 
 class PasswordChange(BaseModel):
     current_password: str
-    new_password: str = Field(min_length=8)
+    new_password: Password
 
 router = APIRouter()
 
@@ -86,7 +94,17 @@ async def change_password(
         raise HTTPException(status_code=400, detail="Current password is incorrect.")
     current_user.hashed_password = hash_password(data.new_password)
     await db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    # Changing a password is how someone reacts to a suspected compromise, so it
+    # has to actually evict the intruder: drop every refresh token, then mint a
+    # fresh pair for the device that made the change. Other sessions can no
+    # longer refresh and fall off within the access token's 30-minute lifetime.
+    await revoke_all_refresh_tokens(current_user.id, db)
+    access_token = create_access_token(current_user.id)
+    refresh_token = await create_refresh_token(current_user.id, db)
+    response = Response(status_code=status.HTTP_204_NO_CONTENT)
+    set_auth_cookies(response, access_token, refresh_token)
+    return response
 
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)

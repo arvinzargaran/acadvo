@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timedelta, timezone
 
-from app.ai.client import get_groq_client
+from app.ai.client import acomplete, get_groq_client
 from app.config import settings
 from app.services.degree import get_degree_summary, list_courses
 from app.services.career import list_career_targets, list_timeline_events
@@ -73,7 +73,8 @@ async def generate_weekly_summary(user, db, force_refresh: bool = False) -> dict
         deadlines=", ".join(upcoming) if upcoming else "None upcoming",
     )
 
-    response = client.chat.completions.create(
+    response = await acomplete(
+        client,
         model=settings.GROQ_MODEL,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=1024,

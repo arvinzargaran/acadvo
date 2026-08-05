@@ -5,6 +5,8 @@ import uuid
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from tests.conftest import CSRF_HEADERS
+
 from app.services.auth import create_access_token, hash_password
 
 
@@ -126,6 +128,7 @@ async def _make_client(app, db, university):
         transport=transport,
         base_url="http://test",
         cookies={"access_token": token},
+        headers=CSRF_HEADERS,
     )
     return client
 

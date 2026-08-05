@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
+import VerifyEmailBanner from './VerifyEmailBanner';
 import ChatWidget from '../chat/ChatWidget';
 import OnboardingTour from '../tour/OnboardingTour';
 
@@ -29,6 +30,7 @@ export default function AppShell() {
 
       <div className="lg:ml-64 flex flex-col min-h-screen">
         <Topbar onMenuToggle={() => setSidebarOpen(true)} />
+        <VerifyEmailBanner />
         <main className="flex-1 p-5 sm:p-8 lg:p-12">
           <Outlet />
         </main>

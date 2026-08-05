@@ -1,3 +1,11 @@
+const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+// Everything interpolated below is untrusted: course and bucket names come from
+// AI extraction of a user-uploaded transcript, so a crafted document can plant
+// markup that would otherwise execute in this same-origin print window.
+const esc = (value) =>
+  String(value ?? '').replace(/[&<>"']/g, (ch) => ESCAPES[ch]);
+
 export default function ExportPDF({ courses, requirements, summary }) {
   const handleExport = () => {
     const grouped = {};
@@ -44,11 +52,11 @@ export default function ExportPDF({ courses, requirements, summary }) {
         ${summary ? `
         <div class="summary">
           <div class="summary-item">
-            <div class="value">${summary.overall_percentage}%</div>
+            <div class="value">${esc(summary.overall_percentage)}%</div>
             <div class="label">Complete</div>
           </div>
           <div class="summary-item">
-            <div class="value">${summary.total_credits_completed}/${summary.total_credits_required}</div>
+            <div class="value">${esc(summary.total_credits_completed)}/${esc(summary.total_credits_required)}</div>
             <div class="label">Credits</div>
           </div>
           ${summary.cumulative_gpa != null ? `
@@ -64,10 +72,10 @@ export default function ExportPDF({ courses, requirements, summary }) {
         <div class="buckets">
           ${summary.buckets.map(b => `
             <div class="bucket">
-              <span>${b.bucket_name}</span>
+              <span>${esc(b.bucket_name)}</span>
               <span>
-                ${b.credits_completed}/${b.credits_required}
-                <span class="progress-bar"><span class="progress-fill" style="width:${Math.min(b.percentage, 100)}%"></span></span>
+                ${esc(b.credits_completed)}/${esc(b.credits_required)}
+                <span class="progress-bar"><span class="progress-fill" style="width:${Math.min(Number(b.percentage) || 0, 100)}%"></span></span>
               </span>
             </div>
           `).join('')}
@@ -75,17 +83,17 @@ export default function ExportPDF({ courses, requirements, summary }) {
         ` : ''}
 
         ${sortedTerms.map(term => `
-          <h2>${term}</h2>
+          <h2>${esc(term)}</h2>
           <table>
             <thead><tr><th>Code</th><th>Course</th><th>Credits</th><th>Status</th><th>Grade</th></tr></thead>
             <tbody>
               ${grouped[term].map(c => `
                 <tr>
-                  <td>${c.course_code}</td>
-                  <td>${c.course_name}</td>
-                  <td>${c.credit_value}</td>
-                  <td class="status-${c.status}">${c.status.replace('_', ' ')}</td>
-                  <td>${c.grade || '—'}</td>
+                  <td>${esc(c.course_code)}</td>
+                  <td>${esc(c.course_name)}</td>
+                  <td>${esc(c.credit_value)}</td>
+                  <td class="status-${esc(c.status)}">${esc(String(c.status ?? '').replace('_', ' '))}</td>
+                  <td>${esc(c.grade || '—')}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -96,6 +104,8 @@ export default function ExportPDF({ courses, requirements, summary }) {
     `;
 
     const printWindow = window.open('', '_blank');
+    // Popup blockers return null; without this the click throws a TypeError.
+    if (!printWindow) return;
     printWindow.document.write(html);
     printWindow.document.close();
     printWindow.onload = () => {

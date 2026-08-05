@@ -9,7 +9,7 @@ Acadvo helps students plan their degrees strategically, track career targets, bu
 | Layer | Technology |
 |-------|-----------|
 | **Backend** | Python 3.12, FastAPI, SQLAlchemy 2.0 (async), PostgreSQL, Alembic |
-| **Frontend** | React 18, Vite, Tailwind CSS, React Router v6, Axios |
+| **Frontend** | React 19, Vite, Tailwind CSS, React Router v8, Axios |
 | **AI** | Groq — Llama 3.3 70B function calling (15 tools), Llama 3.2 11B Vision for image input, PDF/spreadsheet text extraction |
 | **Auth** | JWT (HS256) with refresh token rotation, bcrypt password hashing |
 | **Infrastructure** | Docker Compose (PostgreSQL + backend + frontend) |
@@ -200,17 +200,78 @@ acadvo/
 
 ## Production Deployment & Security
 
-Before exposing this app publicly, the backend enforces a few settings at startup (it refuses to boot otherwise when `DEBUG=False`):
+### Deploying
 
-- **`JWT_SECRET_KEY`** — must be a random 32+ char string (`openssl rand -hex 32`). Rotating it invalidates all existing sessions.
-- **`COOKIE_SECURE=True`** — required in production so auth cookies are only sent over HTTPS. Deploy behind TLS.
-- **`CORS_ORIGINS`** — must be your real domain(s), not `localhost` or `*`.
+`docker-compose.prod.yml` brings up the whole stack behind Caddy, which obtains and renews Let's Encrypt certificates automatically. Nothing except the proxy publishes a host port — the API, the static frontend, Postgres and Redis are reachable only inside the compose network.
 
-Additional operational requirements (not auto-enforced):
+```bash
+cp .env.example .env   # then fill in every value
+docker compose -f docker-compose.prod.yml up -d --build
+```
 
-- **Rate limiting depends on the client IP, so proxy headers must be handled correctly.** Run the app with `--no-proxy-headers` unless it sits behind a reverse proxy you control. When you do use a proxy, run uvicorn with `--proxy-headers --forwarded-allow-ips=<proxy-ip>` (never `*`) and keep the app's own port bound to loopback (`127.0.0.1:8000`) so clients can't reach uvicorn directly and spoof `X-Forwarded-For` to bypass rate limits. The provided `docker-compose.prod.yml` is configured this way.
-- **Rate limits are per-worker and in-memory.** With `--workers N` the effective limit is multiplied by N and resets on restart; use a single worker or move to a shared (Redis) store for exact global limits.
-- **Do not publish the database or backend port to a public interface.** The dev compose binds Postgres to `127.0.0.1` only; the prod compose keeps the DB internal to the Docker network.
+Set `APP_DOMAIN` and `API_DOMAIN` to two names under **one registrable domain** (e.g. `acadvo.app` and `api.acadvo.app`) and point both at the host before starting, or the ACME challenge fails. Same-registrable-domain matters for more than tidiness: it keeps app→API requests *same-site*, so the `SameSite=lax` auth cookies still work. Two unrelated domains would force `COOKIE_SAMESITE=none`, which the app refuses to start with.
+
+### Enforced at startup
+
+The backend refuses to boot when `DEBUG=False` and any of these is wrong:
+
+- **`JWT_SECRET_KEY`** — a random 32+ char string (`openssl rand -hex 32`). Rotating it invalidates all existing sessions.
+- **`JWT_ALGORITHM`** — must be HS256/384/512. An asymmetric or `none` value is rejected, closing the JWT algorithm-confusion hole.
+- **`COOKIE_SECURE=True`** — auth cookies only over HTTPS.
+- **`COOKIE_SAMESITE`** — `none` is refused outright, not merely warned about.
+- **`CORS_ORIGINS`** — your real domain(s), never `localhost` or `*`.
+
+### What protects what
+
+| Control | Where | Against |
+|---|---|---|
+| httpOnly + `Secure` + `SameSite=lax` cookies; refresh cookie scoped to `/auth` | `services/auth.py` | Token theft via XSS; refresh token riding on every request |
+| Required `X-Requested-With` header on all state-changing requests | `main.py` (`csrf_protection`) | CSRF, including the multipart form vector that CORS preflight does not cover |
+| Refresh-token rotation **with reuse detection** — a replayed token revokes the whole family | `services/auth.py` | A stolen refresh token silently outliving detection |
+| Per-account login backoff (escalating, capped) on top of the per-IP limit | `services/auth.py` | Distributed credential stuffing, which a per-IP limit does nothing against |
+| 12-char minimum + breach-list blocklist + bcrypt 72-byte cap | `schemas/password.py` | Guessable passwords; silent bcrypt truncation |
+| Magic-byte sniffing; declared Content-Type must match real bytes | `services/uploads.py` | Mislabelled files reaching PDF/spreadsheet parsers |
+| Page/sheet/row/character caps on extraction | `services/uploads.py` | Decompression bombs — a 10 MB XLSX or PDF expanding to exhaust a worker |
+| Every Groq call and every PDF/XLSX parse runs off the event loop | `ai/client.py` (`run_blocking`) | One user's chat or upload stalling the whole worker (trivially triggered DoS) |
+| Email verification required for every AI endpoint | `deps.py` (`require_verified_email`) | Throwaway addresses burning Groq budget; accounts on addresses the signer-up doesn't own |
+| Feed token redacted from the request log **and** uvicorn's access log **and** Sentry | `observability.py` | Leaking a permanent bearer credential for a user's schedule into logs |
+| CSP, HSTS, `frame-ancestors`, Permissions-Policy, COOP/CORP — repeated into every nginx `location` | `frontend/nginx.conf`, `security-headers.conf` | XSS impact, clickjacking. **`add_header` is not inherited into a `location` that sets its own — hence the `include`.** |
+| HTML escaping in the PDF export; `javascript:`/`data:` URLs rejected in both the schema and the UI | `ExportPDF.jsx`, `utils/urls.js`, `schemas/weburl.py` | Stored XSS via AI-extracted course names and user-supplied links |
+| Containers run non-root, read-only rootfs, `cap_drop: ALL`, `no-new-privileges`, digest-pinned images | Dockerfiles, `docker-compose.prod.yml` | Privilege escalation after a parser RCE; supply-chain drift |
+
+### Operational requirements (not auto-enforced)
+
+- **Proxy headers must be handled correctly or rate limiting is bypassable.** Run with `--no-proxy-headers` unless behind a reverse proxy you control. Behind one, use `--proxy-headers --forwarded-allow-ips=<proxy-ip-or-cidr>` (never `*`) and keep the app's own port off public interfaces. Note that with Caddy in a **container**, the trusted peer is its address on the compose network, *not* loopback — `docker-compose.prod.yml` defaults `FORWARDED_ALLOW_IPS` to the fixed `172.28.0.0/16` subnet it declares.
+- **Rate limits are per-worker unless shared.** With `--workers N` an in-memory limit is effectively multiplied by N and resets on restart. The prod compose wires `RATE_LIMIT_STORAGE_URI` to Redis for you.
+- **Set `SMTP_*`. This is now load-bearing, not optional.** The AI features require a verified email address, and verification links are delivered by email. With SMTP unconfigured those links are only written to the server log, so no real user can ever reach the advisor. The app warns about this at startup.
+- **Rotate the pinned base-image digests deliberately.** Pinning stops silent drift but also stops silent patching; refresh them on a schedule.
+
+### Email verification
+
+AI endpoints (`/conversations`, `/course-advisor/*`, `/suggestions`, degree document/syllabus parsing, resume review) return **403** until the account's address is confirmed. Everything else — reads, ordinary CRUD, onboarding, password change, account deletion — stays open, because gating those would leave new users unable to finish signup without buying any real protection: that data is per-account, isolated and rate-limited.
+
+The line is drawn at cost. Each model call spends money, and a per-IP rate limit does nothing against someone cycling throwaway addresses.
+
+Migration `015` marks all pre-existing accounts verified. Those rows predate any enforcement, so leaving them alone would lock out every current user — including anyone who *did* verify while the flag was decorative. Drop that migration before deploying if you would rather force everyone through verification.
+
+### Security in CI
+
+`.github/workflows/ci.yml` runs, with `permissions: contents: read` and every action pinned to a commit SHA (not a mutable tag):
+
+- `pip-audit` against the pinned `requirements.txt`
+- `npm run audit` — a gate script that fails on any high/critical advisory not carrying a written, **expiring** justification in `frontend/audit-allowlist.json` (that allowlist is currently empty — everything known is actually fixed)
+- Bandit and CodeQL (`security-extended`) for Python and JS
+- gitleaks over full history
+
+Run them locally the same way:
+
+```bash
+cd backend && pip-audit --requirement requirements.txt --strict && bandit -r app -ll
+```
+
+```bash
+cd frontend && npm run audit
+```
 
 ## Technical Decisions
 

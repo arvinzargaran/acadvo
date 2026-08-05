@@ -1,0 +1,11 @@
+{
+  "_comment": [
+    "Advisories that are accepted rather than fixed, checked by scripts/audit-gate.mjs.",
+    "An entry here is a decision, not a snooze: it must say why the advisory cannot",
+    "affect this app, and it must have an expiry so it gets re-examined instead of",
+    "quietly becoming permanent. Anything not listed here fails CI at high severity.",
+    "",
+    "Currently empty — every known high/critical advisory is actually fixed."
+  ],
+  "allow": []
+}

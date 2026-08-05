@@ -8,6 +8,7 @@ import client from '../api/client';
 import { deleteAccount, changePassword, getCalendarFeed, regenerateCalendarFeed } from '../api/users';
 import { resendVerification } from '../api/auth';
 import { getErrorMessage } from '../utils/errors';
+import { MIN_PASSWORD_LENGTH, PASSWORD_HINT } from '../utils/password';
 
 export default function SettingsPage() {
   const { user, setUser, logout } = useAuth();
@@ -192,7 +193,7 @@ export default function SettingsPage() {
         </div>
         <form onSubmit={handlePasswordChange} className="space-y-4">
           <Input label="Current Password" type="password" value={pwForm.current_password} onChange={e => setPwForm(f => ({ ...f, current_password: e.target.value }))} required />
-          <Input label="New Password" type="password" value={pwForm.new_password} onChange={e => setPwForm(f => ({ ...f, new_password: e.target.value }))} required minLength={8} placeholder="Min 8 characters" />
+          <Input label="New Password" type="password" value={pwForm.new_password} onChange={e => setPwForm(f => ({ ...f, new_password: e.target.value }))} required minLength={MIN_PASSWORD_LENGTH} placeholder={PASSWORD_HINT} />
           <Input label="Confirm New Password" type="password" value={pwForm.confirm_password} onChange={e => setPwForm(f => ({ ...f, confirm_password: e.target.value }))} required />
           {pwError && <p className="text-red-400 text-sm">{pwError}</p>}
           <div className="flex items-center gap-3">

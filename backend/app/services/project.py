@@ -91,8 +91,13 @@ async def delete_project(project_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSes
 
 
 async def create_milestone(
-    project_id: uuid.UUID, data: MilestoneCreate, db: AsyncSession
+    project_id: uuid.UUID, user_id: uuid.UUID, data: MilestoneCreate, db: AsyncSession
 ) -> Milestone:
+    # Ownership is checked here, not (only) in the router. Every sibling
+    # operation enforces it inside the service; leaving this one to its caller
+    # means the next caller added is an IDOR by default.
+    await get_project(project_id, user_id, db)
+
     milestone = Milestone(
         project_id=project_id,
         title=data.title,
