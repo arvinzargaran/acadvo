@@ -52,6 +52,17 @@ services:
   db:
     <<: *hardening
     image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    cap_add:
+      # Postgres' entrypoint starts as root to fix up ownership/permissions on
+      # the data directory and the socket dir, then drops to the postgres user.
+      # Under a bare `cap_drop: ALL` it cannot do any of that and crash-loops on
+      # "chown: /var/run/postgresql: Operation not permitted". These five are
+      # what that setup needs — still far fewer than Docker's ~14 by default.
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}

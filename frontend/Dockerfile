@@ -43,10 +43,21 @@ RUN set -eu; \
 # privilege. Drop the `user` directive (meaningless once the master is already
 # unprivileged, and it logs a warning every start) and move the pidfile somewhere
 # the nginx user can actually write.
+# The pid rewrite matches the `pid` DIRECTIVE, not a hardcoded path: this image
+# uses /run/nginx.pid while others use /var/run/nginx.pid, and a path-specific
+# sed silently matches nothing — leaving nginx to die at startup with
+# "open() /run/nginx.pid failed (13: Permission denied)" once it is non-root.
+# The grep afterwards makes that failure loud at build time instead.
+#
+# The trailing `rm` is not tidiness: `nginx -t` runs as root here and leaves a
+# root-owned /tmp/nginx.pid behind, which the unprivileged runtime user then
+# cannot overwrite — the validation step itself would break startup.
 RUN sed -i 's#^user .*#\# master already runs unprivileged; user directive removed#' /etc/nginx/nginx.conf \
-    && sed -i 's#/var/run/nginx.pid#/tmp/nginx.pid#' /etc/nginx/nginx.conf \
+    && sed -i 's#^pid .*#pid /tmp/nginx.pid;#' /etc/nginx/nginx.conf \
+    && grep -q '^pid /tmp/nginx.pid;' /etc/nginx/nginx.conf \
     && chown -R nginx:nginx /var/cache/nginx /usr/share/nginx/html \
-    && nginx -t
+    && nginx -t \
+    && rm -f /tmp/nginx.pid
 
 USER nginx
 
