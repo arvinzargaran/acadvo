@@ -20,6 +20,7 @@ from app.ai.client import (
     get_groq_client,
     record_ai_success,
     record_ai_failure,
+    run_blocking,
 )
 from app.ai.context import build_system_prompt
 from app.ai.tools import get_groq_tools
@@ -124,6 +125,10 @@ async def send_message(
         """Call Groq once, timing it and logging latency + token usage.
 
         No message content is logged — only latency and token counts.
+
+        Synchronous on purpose: it wraps the blocking Groq SDK and its retry
+        sleeps. Always invoke it through ``_model_call_async`` so the whole
+        thing — request plus backoff — happens off the event loop.
         """
         nonlocal total_prompt_tokens, total_completion_tokens
         call_start = time.perf_counter()
@@ -181,6 +186,15 @@ async def send_message(
         logger.debug("groq call complete", extra=extra)
         return resp
 
+    async def _model_call_async(round_no: int):
+        """Run one _model_call in a worker thread.
+
+        A single chat turn can make MAX_TOOL_ROUNDS model calls, each with up to
+        AI_MAX_ATTEMPTS retries and exponential-backoff sleeps. Run inline, that
+        is tens of seconds during which this uvicorn worker serves nobody.
+        """
+        return await run_blocking(_model_call, round_no)
+
     def _summary_extra(outcome: str) -> dict:
         return {
             "ai_rounds": rounds,
@@ -191,7 +205,7 @@ async def send_message(
             "outcome": outcome,
         }
 
-    response = _model_call(0)
+    response = await _model_call_async(0)
 
     for round_idx in range(MAX_TOOL_ROUNDS):
         assistant_message = response.choices[0].message
@@ -260,7 +274,7 @@ async def send_message(
                 "content": tool_result,
             })
 
-        response = _model_call(round_idx + 1)
+        response = await _model_call_async(round_idx + 1)
 
     # Hit max rounds
     logger.info("ai message handled", extra=_summary_extra("max_rounds"))

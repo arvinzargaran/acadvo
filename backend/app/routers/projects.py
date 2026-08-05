@@ -71,9 +71,7 @@ async def create_milestone(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Verify project belongs to user
-    await project_service.get_project(project_id, user.id, db)
-    return await project_service.create_milestone(project_id, data, db)
+    return await project_service.create_milestone(project_id, user.id, data, db)
 
 
 @router.put("/milestones/{milestone_id}", response_model=MilestoneResponse)

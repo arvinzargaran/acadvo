@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { getSchedule } from '../api/schedule';
 import WeeklyView from '../components/schedule/WeeklyView';
 import MonthlyView from '../components/schedule/MonthlyView';

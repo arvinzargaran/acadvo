@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import client from '../api/client';
 import * as authApi from '../api/auth';
+import { clearCachedUserData } from '../utils/localCache';
 
 const AuthContext = createContext(null);
 
@@ -38,11 +39,17 @@ export function AuthProvider({ children }) {
       // ignore logout errors
     } finally {
       setUser(null);
+      // Clearing React state does not touch localStorage, where the AI weekly
+      // summary and DSA progress are cached — on a shared machine those would
+      // otherwise be readable by whoever signs in next.
+      clearCachedUserData();
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout, setUser }}>
+    <AuthContext.Provider
+      value={{ user, isLoading, login, register, logout, setUser, refreshUser: fetchUser }}
+    >
       {children}
     </AuthContext.Provider>
   );

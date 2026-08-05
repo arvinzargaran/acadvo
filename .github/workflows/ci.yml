@@ -4,6 +4,19 @@ on:
   push:
   pull_request:
 
+# Least privilege by default. The workflow only reads the repo; individual jobs
+# widen this where they genuinely need to (CodeQL uploads results).
+# Without this, GITHUB_TOKEN gets whatever the repository default is — often
+# write — so a compromised dependency in any build step could push to the repo.
+permissions:
+  contents: read
+
+# Note on action pinning: every `uses:` below is pinned to a commit SHA rather
+# than a tag. Tags are mutable, so `@v4` is an instruction to run whatever code
+# that tag points at on the day the job runs — the exact supply-chain weakness
+# behind the tj-actions/changed-files compromise. The trailing comment records
+# the human-readable version for review.
+
 jobs:
   backend:
     name: Backend (migrations + tests)
@@ -29,10 +42,10 @@ jobs:
       DEBUG: "True"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
@@ -54,10 +67,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
 
@@ -69,6 +82,100 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      # `npm test --if-present` passed --if-present through to vitest as an
+      # unknown argument instead of guarding the script, so a missing or failing
+      # test script could slip through. `npm run test` is the correct form.
       - name: Test
         working-directory: frontend
-        run: npm test --if-present
+        run: npm run test
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+
+      # Audits the pinned requirements file against the PyPI advisory database.
+      # This is the check that would have caught python-jose's algorithm-confusion
+      # and JWT-bomb advisories, and the Starlette multipart DoS.
+      - name: Audit Python dependencies
+        run: |
+          pip install pip-audit
+          pip-audit --requirement backend/requirements.txt --strict --progress-spinner off
+
+      # Not a bare `npm audit`: the gate script fails on any high/critical
+      # advisory EXCEPT ones explicitly accepted, with a written justification
+      # and an expiry date, in frontend/audit-allowlist.json. That keeps the
+      # check enforcing rather than permanently red on an advisory whose only
+      # published "fix" is a downgrade into a worse position.
+      - name: Audit npm dependencies
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run audit
+
+  static-analysis:
+    name: Static analysis (CodeQL + Bandit)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # CodeQL needs this to upload findings to the Security tab.
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      # Bandit catches the Python-specific patterns CodeQL is weaker on:
+      # hardcoded secrets, weak hashes, shell=True, assert-based auth checks.
+      # `-ll` reports medium severity and above so low-confidence noise does not
+      # block merges.
+      - name: Run Bandit
+        run: |
+          pip install bandit
+          bandit -r backend/app -ll
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@a2983b8bed1923f44751c5c43237f479442827b3 # v3
+        with:
+          languages: python,javascript-typescript
+          queries: security-extended
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@a2983b8bed1923f44751c5c43237f479442827b3 # v3
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # gitleaks needs history to scan commits, not just the working tree —
+          # a secret that was committed and later removed is still exposed.
+          fetch-depth: 0
+
+      # Free for individual accounts and public repos. If this repo lives under a
+      # GitHub *organisation*, gitleaks-action additionally requires a
+      # GITLEAKS_LICENSE secret and this step will fail without one — swap in the
+      # gitleaks binary directly (`docker run zricethezav/gitleaks detect`) if you
+      # do not want a licence.
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

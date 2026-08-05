@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, require_verified_email
 from app.limiter import limiter
 from app.models.user import User
 from app.schemas.degree import (
@@ -34,6 +34,7 @@ from app.schemas.degree import (
 from app.services import degree as degree_service
 from app.services.catalog import get_catalog_status
 from app.services.document_parser import parse_degree_document
+from app.services.uploads import UploadTooComplexError, validate_upload
 
 router = APIRouter()
 
@@ -52,27 +53,32 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 # ── Document Parsing ─────────────────────────────────────────────────
 
-@router.post("/parse-document", response_model=ParsedDegreeDocument)
+# AI-backed and costly: requires a verified email (see main.py).
+@router.post(
+    "/parse-document",
+    response_model=ParsedDegreeDocument,
+    dependencies=[Depends(require_verified_email)],
+)
 @limiter.limit("5/hour")
 async def parse_document(
     request: Request,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):
-    if file.content_type not in ALLOWED_MIME_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type: {file.content_type}. Accepted: PDF, PNG, JPEG, WebP, Excel, CSV.",
-        )
-
     if file.size is not None and file.size > MAX_FILE_SIZE:
         raise HTTPException(status_code=413, detail="File too large. Maximum size is 10 MB.")
     file_bytes = await file.read()
     if len(file_bytes) > MAX_FILE_SIZE:
         raise HTTPException(status_code=413, detail="File too large. Maximum size is 10 MB.")
 
+    # Validate against the real bytes, not the client-supplied Content-Type, and
+    # parse as whatever the file actually is.
+    mime_type = validate_upload(file_bytes, file.content_type, ALLOWED_MIME_TYPES)
+
     try:
-        result = await parse_degree_document(file_bytes, file.content_type)
+        result = await parse_degree_document(file_bytes, mime_type)
+    except UploadTooComplexError as e:
+        raise HTTPException(status_code=413, detail=str(e))
     except Exception as e:
         logger.error("Document parse error: %s", e)
         err_str = str(e)
@@ -261,7 +267,12 @@ async def grade_projection(
     return await degree_service.project_course_grade(course_id, current_user.id, db, target=target)
 
 
-@router.post("/courses/{course_id}/parse-syllabus", response_model=list[AssessmentResponse])
+# AI-backed and costly: requires a verified email (see main.py).
+@router.post(
+    "/courses/{course_id}/parse-syllabus",
+    response_model=list[AssessmentResponse],
+    dependencies=[Depends(require_verified_email)],
+)
 @limiter.limit("10/hour")
 async def parse_syllabus(
     request: Request,
@@ -270,22 +281,20 @@ async def parse_syllabus(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if file.content_type not in ALLOWED_MIME_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type: {file.content_type}. Accepted: PDF, PNG, JPEG, WebP.",
-        )
-
     if file.size is not None and file.size > MAX_FILE_SIZE:
         raise HTTPException(status_code=413, detail="File too large. Maximum size is 10 MB.")
     file_bytes = await file.read()
     if len(file_bytes) > MAX_FILE_SIZE:
         raise HTTPException(status_code=413, detail="File too large. Maximum size is 10 MB.")
 
+    mime_type = validate_upload(file_bytes, file.content_type, ALLOWED_MIME_TYPES)
+
     try:
         assessments = await degree_service.parse_and_save_syllabus(
-            course_id, current_user.id, file_bytes, file.content_type, db
+            course_id, current_user.id, file_bytes, mime_type, db
         )
+    except UploadTooComplexError as e:
+        raise HTTPException(status_code=413, detail=str(e))
     except Exception:
         logger.exception("Syllabus parse error")
         raise HTTPException(

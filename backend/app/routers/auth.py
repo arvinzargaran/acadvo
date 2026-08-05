@@ -19,6 +19,7 @@ from app.services.auth import (
     PURPOSE_EMAIL_VERIFY,
     PURPOSE_PASSWORD_RESET,
     authenticate_user,
+    clear_auth_cookies,
     consume_verification_token,
     create_access_token,
     create_refresh_token,
@@ -28,6 +29,7 @@ from app.services.auth import (
     revoke_all_refresh_tokens,
     revoke_refresh_token,
     register_user,
+    set_auth_cookies,
 )
 from app.services.email import send_email
 
@@ -63,42 +65,10 @@ async def _send_password_reset_email(user: User, db: AsyncSession) -> None:
         f"this, you can safely ignore this email — your password won't change.",
     )
 
-_ACCESS_MAX_AGE = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
-_REFRESH_MAX_AGE = settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
-
-
-def _set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        secure=settings.COOKIE_SECURE,
-        samesite=settings.COOKIE_SAMESITE,
-        max_age=_ACCESS_MAX_AGE,
-    )
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=settings.COOKIE_SECURE,
-        samesite=settings.COOKIE_SAMESITE,
-        max_age=_REFRESH_MAX_AGE,
-    )
-
-
-def _clear_auth_cookies(response: Response) -> None:
-    response.delete_cookie(
-        "access_token",
-        httponly=True,
-        secure=settings.COOKIE_SECURE,
-        samesite=settings.COOKIE_SAMESITE,
-    )
-    response.delete_cookie(
-        "refresh_token",
-        httponly=True,
-        secure=settings.COOKIE_SECURE,
-        samesite=settings.COOKIE_SAMESITE,
-    )
+# Cookie helpers live in services.auth so every session-minting path (here plus
+# the password-change endpoint in routers/users.py) writes identical flags.
+_set_auth_cookies = set_auth_cookies
+_clear_auth_cookies = clear_auth_cookies
 
 
 @router.post("/register", status_code=200)
@@ -151,9 +121,13 @@ async def refresh(
 async def logout(
     response: Response,
     refresh_token: str | None = Cookie(default=None),
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Deliberately no get_current_user: once the 30-minute access token expires
+    # the user could not reach this endpoint, so their 7-day refresh token would
+    # never be revoked server-side. Presenting the refresh cookie is enough to
+    # revoke that one token, and there is nothing to abuse — the worst an
+    # attacker can do with a token they already hold is log it out.
     if refresh_token:
         await revoke_refresh_token(refresh_token, db)
     _clear_auth_cookies(response)

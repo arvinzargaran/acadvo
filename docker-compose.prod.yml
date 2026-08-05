@@ -1,67 +1,151 @@
+# Production stack. Caddy terminates TLS at the edge; nothing else publishes a
+# host port, so the API, the static frontend, Postgres and Redis are reachable
+# only from inside the compose network.
+#
+# Hardening applied uniformly to every service:
+#   no-new-privileges  — a setuid binary inside the image cannot escalate.
+#   cap_drop: [ALL]    — none of these processes need a Linux capability.
+#   read_only          — the image filesystem is immutable at runtime; the few
+#                        paths that genuinely need writes get an explicit tmpfs.
+#   restart / limits   — a crashed service comes back; one container OOMing
+#                        cannot starve the host.
+
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
-  db:
-    image: postgres:16-alpine
+  proxy:
+    <<: *hardening
+    image: caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+    # Caddy provisions and renews Let's Encrypt certificates automatically. It
+    # needs :80 for the ACME HTTP challenge and to redirect http -> https.
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    cap_add:
+      # The only capability any service gets: binding 80/443 as non-root.
+      - NET_BIND_SERVICE
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN to the domain serving the web app}
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN to the domain serving the API}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL for Let's Encrypt expiry notices}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and ACME account keys. Losing this volume means re-issuing
+      # certificates on every restart, which will hit Let's Encrypt rate limits.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+
+  db:
+    <<: *hardening
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
     # No host port mapping — DB is only reachable within the Docker network
     volumes:
       - pgdata:/var/lib/postgresql/data
+    tmpfs:
+      - /tmp
+      - /run
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    mem_limit: 1g
 
   redis:
-    image: redis:7-alpine
+    <<: *hardening
+    image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
     # Shared rate-limit store so limits are exact and consistent across the
     # backend's multiple workers (in-memory would count per-worker and reset on
     # restart). Network-internal only; no host port mapping.
     command: ["redis-server", "--save", "", "--appendonly", "no"]
+    read_only: true
+    user: "999:999"
+    tmpfs:
+      - /tmp
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
+    mem_limit: 256m
 
   backend:
+    <<: *hardening
     build: ./backend
-    # Bind to loopback: only a same-host TLS reverse proxy (nginx/Caddy) should
-    # reach the API. Publishing 8000 on 0.0.0.0 while --proxy-headers is on lets
-    # clients hit uvicorn directly and spoof X-Forwarded-For to evade rate limits.
-    ports:
-      - "127.0.0.1:8000:8000"
+    # No host port mapping: the API is reached only through the TLS proxy.
+    # Publishing 8000 while --proxy-headers is on would let clients hit uvicorn
+    # directly and spoof X-Forwarded-For to evade rate limits.
     env_file:
       - .env
-    # Point the rate limiter at the shared Redis store. Overrides any stale value
-    # in .env so the multi-worker limit is always exact in this deployment.
     environment:
+      # Point the rate limiter at the shared Redis store. Overrides any stale
+      # value in .env so the multi-worker limit is always exact here.
       RATE_LIMIT_STORAGE_URI: redis://redis:6379
+      # Caddy sits in front and sets X-Forwarded-For.
+      BEHIND_PROXY: "True"
+    read_only: true
+    tmpfs:
+      # pdfplumber/openpyxl and Starlette's multipart spooling need scratch space.
+      - /tmp:size=256m
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    # --proxy-headers trusts X-Forwarded-For ONLY from the IPs in
-    # --forwarded-allow-ips. Set FORWARDED_ALLOW_IPS to your reverse proxy's IP;
-    # it defaults to loopback (correct when the proxy runs on this host). Never
-    # set it to '*' — that lets any client spoof their IP and bypass rate limits.
+    # --proxy-headers trusts X-Forwarded-For ONLY from the IPs/networks given to
+    # --forwarded-allow-ips. Because Caddy runs as a container, the trusted peer
+    # is its address on the compose network — NOT loopback — so this defaults to
+    # the fixed subnet declared at the bottom of this file. Never set it to '*':
+    # that lets any client spoof their IP and bypass rate limiting entirely.
     command: >
-      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=${FORWARDED_ALLOW_IPS:-127.0.0.1}"
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=${FORWARDED_ALLOW_IPS:-172.28.0.0/16}"
+    mem_limit: 1g
 
   frontend:
+    <<: *hardening
     build:
       context: ./frontend
       args:
-        # Baked into the JS bundle at build time. MUST be the API's public URL
-        # (e.g. https://api.yourdomain.com), or the deployed app calls localhost.
+        # Baked into the JS bundle AND into the CSP connect-src at build time.
+        # MUST be the API's public URL (e.g. https://api.yourdomain.com), or the
+        # deployed app calls localhost and its own CSP blocks the request.
         VITE_API_URL: ${VITE_API_URL:?set VITE_API_URL to the public API URL in .env}
-    ports:
-      - "80:80"
+    # No host port mapping — served through the TLS proxy on :8080 internally.
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
     depends_on:
       - backend
+    mem_limit: 128m
 
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:
+
+networks:
+  default:
+    ipam:
+      config:
+        # Fixed subnet so FORWARDED_ALLOW_IPS above can name it. Change both
+        # together if this range collides with something on your host.
+        - subnet: 172.28.0.0/16

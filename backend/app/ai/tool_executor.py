@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.ai.client import get_groq_client
+from app.ai.client import acomplete, get_groq_client
 from app.config import settings
 from app.models.user import User
 from app.models.degree import Assessment, DegreeRequirement, Course, CourseStatus
@@ -435,7 +435,8 @@ Format the results as a JSON array of objects with keys: course_code, course_nam
 
     try:
         client = get_groq_client()
-        response = client.chat.completions.create(
+        response = await acomplete(
+            client,
             model=settings.GROQ_MODEL,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=2048,

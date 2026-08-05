@@ -138,11 +138,19 @@ async def app():
     _app.dependency_overrides.clear()
 
 
+# The CSRF middleware requires this header on every state-changing request, the
+# same way the real SPA sends it. Tests that specifically exercise the CSRF
+# rejection path build their own client without it.
+CSRF_HEADERS = {"X-Requested-With": "XMLHttpRequest"}
+
+
 @pytest.fixture
 async def client(app):
     """Unauthenticated async HTTP client."""
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
+    async with AsyncClient(
+        transport=transport, base_url="http://test", headers=CSRF_HEADERS
+    ) as c:
         yield c
 
 
@@ -152,7 +160,12 @@ async def client(app):
 
 @pytest.fixture
 async def test_user(db):
-    """Create and return a test user in the database."""
+    """Create and return a test user in the database.
+
+    Verified, because that is the ordinary state of an account in use — the AI
+    routers refuse unverified accounts (see deps.require_verified_email). Use
+    `unverified_user` to exercise that gate.
+    """
     from app.models.user import User
 
     user = User(
@@ -164,11 +177,45 @@ async def test_user(db):
         program="Computer Science",
         start_year=2023,
         expected_graduation_year=2027,
+        email_verified=True,
     )
     db.add(user)
     await db.commit()
     await db.refresh(user)
     return user
+
+
+@pytest.fixture
+async def unverified_user(db):
+    """A signed-up account that has not yet confirmed its email address."""
+    from app.models.user import User
+
+    user = User(
+        id=uuid.uuid4(),
+        email="unverified@example.com",
+        hashed_password=hash_password("testpass123"),
+        full_name="Unverified User",
+        university="University of Toronto",
+        program="Computer Science",
+        email_verified=False,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@pytest.fixture
+async def unverified_client(app, unverified_user):
+    """Authenticated client whose account has an unverified email."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        cookies={"access_token": create_access_token(unverified_user.id)},
+        headers=CSRF_HEADERS,
+    ) as c:
+        yield c
 
 
 @pytest.fixture
@@ -197,5 +244,6 @@ async def auth_client(app, test_user, auth_token):
         transport=transport,
         base_url="http://test",
         cookies={"access_token": auth_token},
+        headers=CSRF_HEADERS,
     ) as c:
         yield c

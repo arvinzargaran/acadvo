@@ -7,6 +7,7 @@ import Skeleton from '../components/ui/Skeleton';
 import PageHeader from '../components/ui/PageHeader';
 import Badge from '../components/ui/Badge';
 import { listProblems, createProblem, updateProblem, deleteProblem, getStats, getSettings, updateSettings } from '../api/dsa';
+import { safeExternalUrl } from '../utils/urls';
 
 const WEEKLY_GOAL_KEY = 'dsa_weekly_goal';
 
@@ -335,9 +336,9 @@ export default function DSAPrepPage() {
                     {/* Title + pattern */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        {problem.leetcode_url ? (
+                        {safeExternalUrl(problem.leetcode_url) ? (
                           <a
-                            href={problem.leetcode_url}
+                            href={safeExternalUrl(problem.leetcode_url)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-sm font-medium text-white hover:text-primary-400 transition-colors truncate"

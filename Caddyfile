@@ -1,0 +1,50 @@
+# TLS terminator for the production stack (docker-compose.prod.yml).
+#
+# Caddy obtains and renews Let's Encrypt certificates automatically and
+# redirects http -> https by default, so nothing in the app is ever served in
+# cleartext. Both hostnames must already resolve to this host's public IP before
+# the stack starts, or the ACME challenge fails.
+#
+# APP_DOMAIN and API_DOMAIN should be two names under the same registrable
+# domain (e.g. acadvo.app and api.acadvo.app). That keeps browser requests from
+# the app to the API *same-site*, so the SameSite=Lax auth cookies are still
+# sent while genuine cross-site CSRF attempts are still blocked.
+
+{
+	email {$ACME_EMAIL}
+
+	# Don't advertise the server software.
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+(common) {
+	encode zstd gzip
+
+	header {
+		-Server
+		# Belt and braces: the origin sets these too, but a response that
+		# bypasses a location block (an nginx error page, an API error) still
+		# gets them here.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	# Cap request bodies. The API's own limit is enforced per-endpoint in
+	# FastAPI; this stops an oversized body from ever being buffered at all.
+	request_body {
+		max_size 12MB
+	}
+}
+
+{$APP_DOMAIN} {
+	import common
+	reverse_proxy frontend:8080
+}
+
+{$API_DOMAIN} {
+	import common
+	reverse_proxy backend:8000
+}

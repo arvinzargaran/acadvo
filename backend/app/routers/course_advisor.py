@@ -2,6 +2,8 @@ import logging
 import uuid
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -132,11 +134,37 @@ async def generate_plan_stream(
     )
 
 
+class PlannedCourse(BaseModel):
+    """One course in a plan the client is asking us to persist.
+
+    This body was previously an untyped `list[dict]`, so whatever the client
+    sent went straight into the DB — a string where a number belongs, or a
+    `credits` value that does not fit Numeric(4,2), surfaced as an unhandled
+    500 and silently corrupted credit totals.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    course_code: str = Field(min_length=1, max_length=20)
+    course_name: str = Field(default="", max_length=200)
+    credits: float = Field(default=3.0, ge=0, le=20)
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class PlannedSemester(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    term: str = Field(min_length=1, max_length=50)
+    courses: list[PlannedCourse] = Field(default_factory=list, max_length=20)
+
+
 @router.post("/apply-plan")
 async def apply_plan(
-    semesters: list[dict[str, Any]] = Body(...),
+    semesters: list[PlannedSemester] = Body(..., max_length=40),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Apply the AI-generated plan — adds new planned courses."""
-    return await apply_semester_plan(current_user.id, semesters, db)
+    return await apply_semester_plan(
+        current_user.id, [s.model_dump() for s in semesters], db
+    )

@@ -741,7 +741,7 @@ async def parse_and_save_syllabus(
     import json
     from datetime import datetime as dt, timezone
 
-    from app.ai.client import get_groq_client
+    from app.ai.client import acomplete, get_groq_client, run_blocking
     from app.config import settings
     from app.models.career import TimelineEvent, TimelineCategory
     from app.services.document_parser import (
@@ -766,22 +766,25 @@ async def parse_and_save_syllabus(
     )
 
     if mime_type == "application/pdf":
-        content_text = _pdf_to_text(file_bytes)
-        response = client.chat.completions.create(
+        content_text = await run_blocking(_pdf_to_text, file_bytes)
+        response = await acomplete(
+            client,
             model=settings.GROQ_MODEL,
             messages=[{"role": "user", "content": f"{prompt}\n\nDocument content:\n\n{content_text}"}],
             max_tokens=4096,
         )
     elif mime_type in SPREADSHEET_MIME_TYPES:
-        content_text = _spreadsheet_to_text(file_bytes, mime_type)
-        response = client.chat.completions.create(
+        content_text = await run_blocking(_spreadsheet_to_text, file_bytes, mime_type)
+        response = await acomplete(
+            client,
             model=settings.GROQ_MODEL,
             messages=[{"role": "user", "content": f"{prompt}\n\nDocument content:\n\n{content_text}"}],
             max_tokens=4096,
         )
     else:
         b64 = base64.b64encode(file_bytes).decode()
-        response = client.chat.completions.create(
+        response = await acomplete(
+            client,
             model=settings.GROQ_VISION_MODEL,
             messages=[{
                 "role": "user",

@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.weburl import WebUrl
+
 DSADifficulty = Literal["easy", "medium", "hard"]
 DSAProblemStatusType = Literal["not_started", "attempted", "solved"]
 
@@ -14,7 +16,7 @@ class DSAProblemCreate(BaseModel):
     pattern: str
     status: DSAProblemStatusType = "not_started"
     notes: str | None = None
-    leetcode_url: str | None = None
+    leetcode_url: WebUrl = None
 
 
 class DSAProblemUpdate(BaseModel):
@@ -23,7 +25,7 @@ class DSAProblemUpdate(BaseModel):
     pattern: str | None = None
     status: DSAProblemStatusType | None = None
     notes: str | None = None
-    leetcode_url: str | None = None
+    leetcode_url: WebUrl = None
 
 
 class DSAProblemResponse(BaseModel):
@@ -36,7 +38,7 @@ class DSAProblemResponse(BaseModel):
     pattern: str
     status: str
     notes: str | None = None
-    leetcode_url: str | None = None
+    leetcode_url: WebUrl = None
     solved_at: datetime | None = None
     created_at: datetime
 

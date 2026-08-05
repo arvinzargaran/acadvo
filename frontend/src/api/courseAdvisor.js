@@ -1,5 +1,5 @@
 import axios from 'axios';
-import client from './client';
+import client, { CSRF_HEADER } from './client';
 
 export function searchCourses(query) {
   return client.get('/course-advisor/search', { params: { q: query }, timeout: 30000 });
@@ -44,7 +44,7 @@ export function streamSemesterPlan(body, onEvent) {
   const doFetch = () =>
     fetch(`${baseURL}/course-advisor/generate-plan/stream`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', [CSRF_HEADER]: 'XMLHttpRequest' },
       credentials: 'include',
       body: JSON.stringify(body || {}),
       signal: controller.signal,
@@ -57,7 +57,11 @@ export function streamSemesterPlan(body, onEvent) {
     let response = await doFetch();
     if (response.status === 401) {
       try {
-        await axios.post(`${baseURL}/auth/refresh`, {}, { withCredentials: true });
+        await axios.post(
+          `${baseURL}/auth/refresh`,
+          {},
+          { withCredentials: true, headers: { [CSRF_HEADER]: 'XMLHttpRequest' } }
+        );
         response = await doFetch();
       } catch {
         // refresh failed — fall through with the original 401 response

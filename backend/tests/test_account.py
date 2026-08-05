@@ -64,7 +64,7 @@ async def test_forgot_password_no_enumeration(client, sent_emails):
 async def test_password_reset_flow(client, sent_emails):
     await client.post("/auth/register", json={
         "email": "resetflow@example.com",
-        "password": "OldPass123",
+        "password": "OldPassphrase123",
         "full_name": "Reset Flow",
     })
     sent_emails.clear()  # drop the verification email
@@ -75,29 +75,29 @@ async def test_password_reset_flow(client, sent_emails):
     token = _token_from(sent_emails[-1]["body"])
 
     # Reset to a new password
-    r = await client.post("/auth/reset-password", json={"token": token, "new_password": "NewPass456"})
+    r = await client.post("/auth/reset-password", json={"token": token, "new_password": "NewPassphrase456"})
     assert r.status_code == 200
 
     # Old password no longer works, new one does
-    old = await client.post("/auth/login", json={"email": "resetflow@example.com", "password": "OldPass123"})
+    old = await client.post("/auth/login", json={"email": "resetflow@example.com", "password": "OldPassphrase123"})
     assert old.status_code == 401
-    new = await client.post("/auth/login", json={"email": "resetflow@example.com", "password": "NewPass456"})
+    new = await client.post("/auth/login", json={"email": "resetflow@example.com", "password": "NewPassphrase456"})
     assert new.status_code == 200
 
     # Token cannot be reused
-    reuse = await client.post("/auth/reset-password", json={"token": token, "new_password": "Another789"})
+    reuse = await client.post("/auth/reset-password", json={"token": token, "new_password": "AnotherPhrase789"})
     assert reuse.status_code == 400
 
 
 async def test_reset_password_bad_token(client):
-    resp = await client.post("/auth/reset-password", json={"token": "bogus", "new_password": "whatever12"})
+    resp = await client.post("/auth/reset-password", json={"token": "bogus", "new_password": "whateverPhrase12"})
     assert resp.status_code == 400
 
 
 async def test_reset_password_too_short(client, sent_emails):
     await client.post("/auth/register", json={
         "email": "shortpw@example.com",
-        "password": "OldPass123",
+        "password": "OldPassphrase123",
         "full_name": "Short PW",
     })
     await client.post("/auth/forgot-password", json={"email": "shortpw@example.com"})

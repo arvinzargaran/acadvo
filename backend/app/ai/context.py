@@ -14,7 +14,40 @@ from app.data.program_config import get_major_gpa_gates
 from app.services.catalog import get_catalog, has_seeded_catalog
 from app.services.degree import _is_constraint_bucket, calculate_gpa
 from app.services.document_parser import normalize_course_code
+from app.ai.sanitize import sanitize, untrusted_data_rule
 from app.services.eligibility import format_prereqs
+
+
+# The instruction block is a module-level template rather than an inline
+# f-string. Same output, but the prompt text is separated from the assembly
+# logic — and it stops Bandit's B608 heuristic from reading an interpolated
+# string containing the words "update ... from" as SQL construction.
+_INSTRUCTIONS_TEMPLATE = """
+{sep}
+INSTRUCTIONS
+{sep}
+{untrusted_data_rule}
+
+You have tools to read and write to this student's data. Use write tools ONLY when the student explicitly asks to change their plan (add/drop a course, create a project, update a status). For questions about status, eligibility, GPA, or "can I take X" — ANSWER from the context above; do NOT call write tools. Never add or mark a course the student has not asked you to change, and never add a course whose prerequisites are unmet or whose GPA gate they fail.
+
+{catalog_rule}
+
+{gate_rule}
+
+When giving advice:
+- Be specific, not generic. Reference their actual courses, projects, and deadlines.
+- Work backwards from deadlines. If something is at risk, say so directly.
+- Prioritize actions. Don't give a list of 10 things — give the top 3.
+- When suggesting courses, consider remaining requirements AND career goals.
+- When discussing projects, think about what will impress at their target companies.
+
+Modes:
+- If onboarding_complete is false, you are in ONBOARDING MODE. Walk the student through setup step by step. Ask about: university, program, graduation year, career target, degree requirements (buckets + credits), completed/in-progress courses, projects, and target companies. Save each piece of information using the appropriate tool as soon as you receive it. When done, set onboarding_complete to true.
+- If the student asks about their progress or status, enter CHECK-IN MODE. Give an honest assessment and top 3 actions.
+- If the student asks about a specific topic, enter DEEP DIVE MODE. Give thorough analysis.
+- Otherwise, you are in PLANNING MODE. Give concrete, actionable plans.
+
+Always be direct. Students don't need diplomacy — they need clarity."""
 
 
 async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
@@ -86,12 +119,12 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
         "=" * 50,
         "STUDENT PROFILE",
         "=" * 50,
-        f"Name: {user.full_name}",
+        f"Name: {sanitize(user.full_name)}",
     ]
     if user.university:
-        profile_lines.append(f"University: {user.university}")
+        profile_lines.append(f"University: {sanitize(user.university)}")
     if user.program:
-        profile_lines.append(f"Program: {user.program}")
+        profile_lines.append(f"Program: {sanitize(user.program)}")
     if user.start_year:
         profile_lines.append(f"Start Year: {user.start_year}")
     if user.expected_graduation_year:
@@ -104,7 +137,7 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
     if location_parts:
         profile_lines.append(f"Location: {', '.join(location_parts)}")
     if user.career_target:
-        profile_lines.append(f"Career Target: {user.career_target}")
+        profile_lines.append(f"Career Target: {sanitize(user.career_target)}")
     profile_lines.append(f"Onboarding Complete: {'Yes' if user.onboarding_complete else 'No'}")
     profile_lines.append(f"Today's Date: {today.isoformat()}")
     sections.append("\n".join(profile_lines))
@@ -143,7 +176,7 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
                 total_required += credits_required
                 total_completed += completed_credits
 
-            degree_lines.append(f"\nBucket: {req.bucket_name} — {completed_credits:.2f} / {credits_required:.2f} credits ({pct:.1f}%)")
+            degree_lines.append(f"\nBucket: {sanitize(req.bucket_name)} — {completed_credits:.2f} / {credits_required:.2f} credits ({pct:.1f}%)")
 
             # Group courses by status
             for status_label, status_val in [
@@ -156,11 +189,11 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
                 if status_courses:
                     course_strs = []
                     for c in status_courses:
-                        parts = [c.course_code]
+                        parts = [sanitize(c.course_code, 32)]
                         if c.term:
-                            parts.append(f"({c.term}")
+                            parts.append(f"({sanitize(c.term, 32)}")
                             if c.grade:
-                                parts[-1] += f", {c.grade})"
+                                parts[-1] += f", {sanitize(c.grade, 8)})"
                             else:
                                 parts[-1] += ")"
                         course_strs.append(" ".join(parts))
@@ -196,7 +229,7 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
             degree_lines.insert(5 + i, line)
 
         for bucket_name, remaining in at_risk_buckets:
-            degree_lines.append(f"\n⚠ AT-RISK: {bucket_name} — {remaining:.2f} credits remaining")
+            degree_lines.append(f"\n⚠ AT-RISK: {sanitize(bucket_name)} — {remaining:.2f} credits remaining")
 
         # Per-course prerequisites for planned / not-scheduled courses, so the AI
         # knows what must be completed first before recommending or adding them.
@@ -237,7 +270,7 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
         proj_lines.append(f"Portfolio Readiness: {deployed_count} of {len(projects)} projects deployed/ready")
 
         for p in projects:
-            proj_lines.append(f"\nProject: {p.name} (Priority {p.priority}) — STATUS: {p.status.value}")
+            proj_lines.append(f"\nProject: {sanitize(p.name)} (Priority {p.priority}) — STATUS: {p.status.value}")
             if p.tech_stack:
                 proj_lines.append(f"  Tech: {p.tech_stack}")
 
@@ -246,7 +279,7 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
                 for m in p.milestones:
                     icon = {"complete": "✅", "in_progress": "🔄", "pending": "⬜", "overdue": "🚨"}.get(m.status.value, "⬜")
                     date_str = f", target {m.target_date.isoformat()}" if m.target_date else ""
-                    proj_lines.append(f"    {icon} {m.title} ({m.status.value}{date_str})")
+                    proj_lines.append(f"    {icon} {sanitize(m.title)} ({m.status.value}{date_str})")
 
             if p.hard_deadline:
                 days_left = (p.hard_deadline - today).days
@@ -264,7 +297,7 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
             "=" * 50,
         ]
         for i, ct in enumerate(career_targets, 1):
-            parts = [f"{i}. {ct.company_name}"]
+            parts = [f"{i}. {sanitize(ct.company_name)}"]
             if ct.role_type:
                 parts.append(f"— {ct.role_type}")
             if ct.location:
@@ -287,7 +320,7 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
         for evt in timeline_events:
             days_away = (evt.event_date - today).days
             hard = " [HARD DEADLINE]" if evt.is_hard_deadline else ""
-            timeline_lines.append(f"- {evt.event_date.isoformat()}: {evt.title}{hard} — {days_away} days")
+            timeline_lines.append(f"- {evt.event_date.isoformat()}: {sanitize(evt.title)}{hard} — {days_away} days")
 
         sections.append("\n".join(timeline_lines))
 
@@ -331,29 +364,13 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
         )
 
     # Instructions
-    sections.append(f"""
-{'=' * 50}
-INSTRUCTIONS
-{'=' * 50}
-You have tools to read and write to this student's data. Use write tools ONLY when the student explicitly asks to change their plan (add/drop a course, create a project, update a status). For questions about status, eligibility, GPA, or "can I take X" — ANSWER from the context above; do NOT call write tools. Never add or mark a course the student has not asked you to change, and never add a course whose prerequisites are unmet or whose GPA gate they fail.
-
-{catalog_rule}
-
-{gate_rule}
-
-When giving advice:
-- Be specific, not generic. Reference their actual courses, projects, and deadlines.
-- Work backwards from deadlines. If something is at risk, say so directly.
-- Prioritize actions. Don't give a list of 10 things — give the top 3.
-- When suggesting courses, consider remaining requirements AND career goals.
-- When discussing projects, think about what will impress at their target companies.
-
-Modes:
-- If onboarding_complete is false, you are in ONBOARDING MODE. Walk the student through setup step by step. Ask about: university, program, graduation year, career target, degree requirements (buckets + credits), completed/in-progress courses, projects, and target companies. Save each piece of information using the appropriate tool as soon as you receive it. When done, set onboarding_complete to true.
-- If the student asks about their progress or status, enter CHECK-IN MODE. Give an honest assessment and top 3 actions.
-- If the student asks about a specific topic, enter DEEP DIVE MODE. Give thorough analysis.
-- Otherwise, you are in PLANNING MODE. Give concrete, actionable plans.
-
-Always be direct. Students don't need diplomacy — they need clarity.""")
+    sections.append(
+        _INSTRUCTIONS_TEMPLATE.format(
+            sep="=" * 50,
+            catalog_rule=catalog_rule,
+            gate_rule=gate_rule,
+            untrusted_data_rule=untrusted_data_rule(),
+        )
+    )
 
     return "\n".join(sections)

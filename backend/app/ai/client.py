@@ -1,6 +1,8 @@
+import functools
 import time
 from threading import Lock
 
+import anyio.to_thread
 from groq import Groq
 from app.config import settings
 
@@ -74,6 +76,48 @@ def get_groq_client() -> Groq:
     if _client is None:
         _client = Groq(api_key=settings.GROQ_API_KEY)
     return _client
+
+
+async def run_blocking(fn, *args, **kwargs):
+    """Run a blocking call in a worker thread.
+
+    The Groq SDK client is synchronous. Awaiting nothing and calling it straight
+    from an ``async def`` handler pins the event loop for the whole round trip —
+    seconds per call, and ``send_message`` makes up to ``MAX_TOOL_ROUNDS`` of
+    them back to back, plus retry sleeps. On a worker serving every other
+    request from that same loop, a handful of concurrent chat or document-parse
+    requests is enough to stall the entire API: a denial of service any logged-in
+    user can trigger by accident. Offloading keeps the loop free.
+
+    ``anyio``'s default thread limiter (40) also caps how many model calls can be
+    in flight per worker, which bounds memory during a traffic spike.
+    """
+    return await anyio.to_thread.run_sync(functools.partial(fn, *args, **kwargs))
+
+
+async def acomplete(client: Groq, **kwargs):
+    """Non-blocking ``client.chat.completions.create(...)``. See run_blocking."""
+    return await run_blocking(client.chat.completions.create, **kwargs)
+
+
+_STREAM_END = object()
+
+
+async def aiter_stream(stream):
+    """Iterate a blocking SDK stream as an async generator.
+
+    ``for chunk in stream`` blocks inside ``next()`` waiting on the network for
+    each token. Yielding to the loop *between* chunks (``await asyncio.sleep(0)``)
+    does not help — the stall is inside the ``next()`` call itself, and it lasts
+    for the whole generation. Pulling each chunk in a worker thread is what
+    actually keeps the worker serving other requests while a plan streams.
+    """
+    iterator = iter(stream)
+    while True:
+        chunk = await run_blocking(next, iterator, _STREAM_END)
+        if chunk is _STREAM_END:
+            return
+        yield chunk
 
 
 def record_ai_success() -> None:

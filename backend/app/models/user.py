@@ -32,6 +32,11 @@ class User(Base):
     last_study_date: Mapped[date | None] = mapped_column(Date)
     daily_study_goal_minutes: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
     calendar_token: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    # Per-account login throttling. The IP rate limit on /auth/login does not
+    # slow a distributed credential-stuffing run at all (one guess per IP per
+    # account); these do. Reset on any successful login.
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
+    login_locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 

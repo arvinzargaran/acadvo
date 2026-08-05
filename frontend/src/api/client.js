@@ -1,8 +1,16 @@
 import axios from 'axios';
 
+// The API rejects any state-changing request without this header. A cross-site
+// HTML form cannot set custom headers, and a cross-origin script that tries is
+// forced into a CORS preflight the API's origin allowlist refuses — so its mere
+// presence proves the request came from this app. See csrf_protection in
+// backend/app/main.py.
+export const CSRF_HEADER = 'X-Requested-With';
+
 const client = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
   withCredentials: true,
+  headers: { [CSRF_HEADER]: 'XMLHttpRequest' },
 });
 
 let isRefreshing = false;
@@ -38,10 +46,13 @@ client.interceptors.response.use(
       isRefreshing = true;
 
       try {
+        // Bare axios, not `client` — going through the instance would re-enter
+        // this interceptor on failure. The CSRF header has to be set by hand
+        // for the same reason.
         await axios.post(
           `${client.defaults.baseURL}/auth/refresh`,
           {},
-          { withCredentials: true }
+          { withCredentials: true, headers: { [CSRF_HEADER]: 'XMLHttpRequest' } }
         );
         processQueue(null);
         return client(originalRequest);

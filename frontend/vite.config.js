@@ -59,7 +59,7 @@ export default defineConfig({
         // instead of one ~900KB bundle. Improves first-paint and lets a redeploy
         // reuse cached vendor chunks (only the app chunk changes most releases).
         manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'react-vendor': ['react', 'react-dom', 'react-router'],
           animation: ['framer-motion', 'gsap', 'lenis'],
           markdown: ['react-markdown'],
         },
