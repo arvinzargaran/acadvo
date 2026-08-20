@@ -91,3 +91,32 @@ def test_extract_mixed_formats():
         "LE/EECS 2101",
         "CMPT 105W",
     ]
+
+
+def test_york_faculty_prefixes_do_not_leak_onto_other_universities():
+    """FACULTY_PREFIXES maps "MATH" to "SC/MATH" — correct at York, wrong
+    everywhere else, and applied everywhere until now.
+
+    `get_catalog` normalises every catalog row through this function, so SFU's
+    real "MATH 100" was stored, matched and displayed to Simon Fraser students
+    as "SC/MATH 100": another university's faculty code stamped on their course.
+    York numbers with four digits; SFU, UofT, TMU, UBC, McGill and Waterloo use
+    three.
+    """
+    assert normalize_course_code("MATH 100") == "MATH 100"
+    assert normalize_course_code("PHYS 100") == "PHYS 100"
+    assert normalize_course_code("CHEM 281") == "CHEM 281"
+    # York's own four-digit codes keep their faculty.
+    assert normalize_course_code("MATH 1300") == "SC/MATH 1300"
+    assert normalize_course_code("EECS 2101") == "LE/EECS 2101"
+
+
+def test_an_explicit_faculty_prefix_is_always_honoured():
+    """A code that already names its faculty is authoritative regardless of width."""
+    assert normalize_course_code("SC/MATH 100") == "SC/MATH 100"
+    assert normalize_course_code("le/eecs 2101") == "LE/EECS 2101"
+
+
+def test_a_trailing_letter_does_not_change_the_width_test():
+    assert normalize_course_code("CMPT 105W") == "CMPT 105W"
+    assert normalize_course_code("MATH 1300A") == "SC/MATH 1300A"

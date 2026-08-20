@@ -264,9 +264,13 @@ def is_graduate_level(code: str) -> bool:
     n = _course_number(code)
     if n is None:
         return False
-    if n >= 1000:                 # four-digit numbering
+    if n >= 1000:                 # four-digit numbering (York: 5000+ is graduate)
         return n >= 5000
-    return n >= 700               # three-digit numbering
+    # Three-digit numbering: 500+ is graduate. Verified against the ingested SFU
+    # catalog rather than assumed — the 500-699 band there is "Graduate Co-op",
+    # "Graduate Project", "Master of Environmental Toxicology Project". A 700
+    # threshold let 97 graduate courses through, and the planner scheduled them.
+    return n >= 500
 
 
 def undergraduate_only(catalog: dict[str, dict]) -> dict[str, dict]:
@@ -364,8 +368,34 @@ def shortlist_for_student(
         else:
             rest.append(code)
 
-    chosen = (own + related + rest)[:limit]
+    chosen = (own + related + _spread_by_subject(rest))[:limit]
     return {c: pool[c] for c in chosen}
+
+
+def _spread_by_subject(codes: list[str]) -> list[str]:
+    """Interleave codes so one subject cannot monopolise a truncated tail.
+
+    The tail of the shortlist is where electives come from, and sorted order
+    means it starts at the alphabetical beginning of the catalog and stops
+    wherever the budget runs out. On the full SFU catalog that gave a French
+    major a plan whose every elective was BISC — not because biology suited
+    them, but because "B" comes early and the list was cut off before the rest
+    of the alphabet. Round-robin over subjects shows the model a spread of what
+    the university actually offers.
+    """
+    by_subject: dict[str, list[str]] = {}
+    for code in codes:
+        by_subject.setdefault(_subject_of(code), []).append(code)
+    out: list[str] = []
+    subjects = sorted(by_subject)
+    while subjects:
+        for subject in list(subjects):
+            bucket = by_subject[subject]
+            if bucket:
+                out.append(bucket.pop(0))
+            else:
+                subjects.remove(subject)
+    return out
 
 
 def allowed_courses_budget_chars(share: float = 0.4) -> int:

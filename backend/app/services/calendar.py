@@ -37,12 +37,50 @@ def feed_url_for_token(token: str) -> str:
 
 
 def _escape(text: str) -> str:
+    """Escape a value for an RFC 5545 property.
+
+    The carriage return handling is the security-relevant part. Escaping only
+    ``\n`` left a bare ``\r`` in the output, and this file joins its lines with
+    ``\r\n`` — so text containing a CRLF became ``...\r`` + an escaped ``n``, and a
+    parser that treats a lone CR as a line break reads whatever followed as a
+    fresh iCalendar property. Every value here is user-influenced (course names
+    and notes, some of them extracted from an uploaded document by a model), and
+    the feed is served to the user's own calendar client from an unauthenticated
+    token URL. Normalising every line ending to ``\n`` first, and escaping that,
+    closes it.
+    """
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     return (
         text.replace("\\", "\\\\")
         .replace(";", "\\;")
         .replace(",", "\\,")
         .replace("\n", "\\n")
     )
+
+
+def _fold(line: str) -> str:
+    """Fold a content line to 75 octets, per RFC 5545 section 3.1.
+
+    Continuation lines begin with a single space. Folding counts *octets*, not
+    characters, so a course title with an accent or an em dash cannot push a
+    line over the limit by more than it appears to — splitting mid-codepoint
+    would corrupt it, so the split points are found on the encoded bytes and
+    decoded back.
+    """
+    raw = line.encode("utf-8")
+    if len(raw) <= 75:
+        return line
+    chunks, start = [], 0
+    limit = 75
+    while start < len(raw):
+        end = min(start + limit, len(raw))
+        # Do not split inside a multi-byte character.
+        while end < len(raw) and (raw[end] & 0xC0) == 0x80:
+            end -= 1
+        chunks.append(raw[start:end].decode("utf-8"))
+        start = end
+        limit = 74  # continuation lines carry a leading space
+    return "\r\n ".join(chunks)
 
 
 async def build_ics_feed(user_id: uuid.UUID, db: AsyncSession) -> str:
@@ -87,4 +125,4 @@ async def build_ics_feed(user_id: uuid.UUID, db: AsyncSession) -> str:
         lines.append("END:VEVENT")
 
     lines.append("END:VCALENDAR")
-    return "\r\n".join(lines) + "\r\n"
+    return "\r\n".join(_fold(line) for line in lines) + "\r\n"

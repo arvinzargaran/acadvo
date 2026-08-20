@@ -41,6 +41,11 @@ def test_graduate_numbering_is_recognised_per_convention():
     assert not is_graduate_level("CMPT 225")
     assert not is_graduate_level("BISC 490")
     assert is_graduate_level("BISC 800")
+    # 500-699 is graduate too — verified against the ingested SFU catalog, whose
+    # 500-699 band is "Graduate Co-op", "Graduate Project", "Master of ...".
+    assert is_graduate_level("CMPT 626")
+    assert is_graduate_level("DMED 500")
+    assert not is_graduate_level("BISC 499")
     # Four-digit schools (York) at 5000+.
     assert not is_graduate_level("LE/EECS 2030")
     assert is_graduate_level("LE/EECS 5101")
@@ -154,3 +159,27 @@ def test_an_unbounded_account_still_gets_a_cap(monkeypatch):
     worth keeping, even where the provider would allow it."""
     monkeypatch.setattr(settings, "GROQ_MAX_REQUEST_TOKENS", 0)
     assert allowed_courses_budget_chars() == 48000
+
+
+def test_the_elective_tail_is_spread_across_subjects():
+    """One subject must not monopolise the part of the list that gets truncated.
+
+    The tail is where electives come from. Sorted order starts at the
+    alphabetical beginning of the catalog and stops wherever the budget runs
+    out, which on the full SFU catalog gave a French major a plan whose every
+    elective was BISC — not because biology suited them, but because "B" is
+    early and the list was cut off before the rest of the alphabet.
+    """
+    catalog = {}
+    for subject in ("BISC", "BPK", "CHEM", "HIST", "PHIL"):
+        catalog.update(_big(subject, 30))
+    short = shortlist_for_student(catalog, set(), program="French", limit=25)
+    subjects = {c.split()[0] for c in short}
+    assert len(subjects) >= 4, sorted(short)
+
+
+def test_the_students_own_subject_still_wins_the_top_of_the_list():
+    """Spreading the tail must not dilute the part that matters."""
+    catalog = {**_big("FREN", 30, "French"), **_big("BISC", 30, "Biology")}
+    short = shortlist_for_student(catalog, set(), program="French", limit=30)
+    assert all(c.startswith("FREN") for c in list(short)[:30])
