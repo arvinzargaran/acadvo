@@ -116,6 +116,7 @@ export default function ProjectCard({ project, index = 0, onUpdateMilestone, onE
         <div className="flex items-center gap-1">
           <button
             onClick={() => onEdit(project)}
+            aria-label={`Edit ${project.name}`}
             className="p-1.5 rounded-lg text-dark-400 hover:text-dark-50 hover:bg-dark-700 transition-all"
             title="Edit"
           >
@@ -125,6 +126,7 @@ export default function ProjectCard({ project, index = 0, onUpdateMilestone, onE
           </button>
           <button
             onClick={() => onDelete(project.id)}
+            aria-label={`Delete ${project.name}`}
             className="p-1.5 rounded-lg text-dark-400 hover:text-red-400 hover:bg-red-500/10 transition-all"
             title="Delete"
           >

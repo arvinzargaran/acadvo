@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import EventCard from './EventCard';
-import { toISODate, torontoToday, getStyle, daysUntil, daysRemainingBadge } from './styles';
+import { toISODate, torontoToday, getStyle } from './styles';
 
 function getWeekStart(d) {
   const date = new Date(d);

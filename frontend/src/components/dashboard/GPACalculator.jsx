@@ -72,21 +72,20 @@ export default function GPACalculator({ compact = false, bento = false }) {
   // Compact card variant for the dashboard grid
   if (compact) {
     if (!gpa || gpa.cumulative_gpa === null) {
-      if (bento) return <div><h3 className="text-white font-semibold mb-2">GPA</h3><p className="text-dark-400 text-sm">No graded courses yet.</p></div>;
+      if (bento) return <div><h3 className="text-dark-50 font-semibold mb-2">GPA</h3><p className="text-dark-400 text-sm">No graded courses yet.</p></div>;
       return (
         <Card>
-          <h3 className="text-white font-semibold mb-2">GPA</h3>
+          <h3 className="text-dark-50 font-semibold mb-2">GPA</h3>
           <p className="text-dark-400 text-sm">No graded courses yet.</p>
         </Card>
       );
     }
-    const pct = (gpa.cumulative_gpa / gpa.scale_max) * 100;
     const color = tierColor(gpa.cumulative_gpa, gpa.scale_max);
     const textColor = color === 'green' ? 'text-green-400' : color === 'yellow' ? 'text-yellow-400' : 'text-red-400';
 
     const content = (
       <>
-        <h3 className="text-white font-semibold mb-3">GPA</h3>
+        <h3 className="text-dark-50 font-semibold mb-3">GPA</h3>
         <div className="flex items-end gap-4 mb-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-dark-400">Cumulative</p>
@@ -128,7 +127,7 @@ export default function GPACalculator({ compact = false, bento = false }) {
       {/* Main GPA Card */}
       <Card gradient>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white">GPA Overview</h2>
+          <h2 className="text-lg font-semibold text-dark-50">GPA Overview</h2>
           <div className="text-sm text-dark-400">{gpa?.scale_name}</div>
         </div>
 
@@ -155,15 +154,15 @@ export default function GPACalculator({ compact = false, bento = false }) {
             <div className="space-y-3 flex-1">
               <div className="flex justify-between text-sm">
                 <span className="text-dark-400">Cumulative GPA</span>
-                <span className="text-white font-bold text-lg">{gpa.cumulative_gpa.toFixed(2)}</span>
+                <span className="text-dark-50 font-bold text-lg">{gpa.cumulative_gpa.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-dark-400">Graded Courses</span>
-                <span className="text-white font-semibold">{gpa.graded_course_count}</span>
+                <span className="text-dark-50 font-semibold">{gpa.graded_course_count}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-dark-400">Total Credits</span>
-                <span className="text-white font-semibold">{gpa.total_credits_completed}</span>
+                <span className="text-dark-50 font-semibold">{gpa.total_credits_completed}</span>
               </div>
               {gpa.highest_term && gpa.lowest_term && gpa.highest_term.term !== gpa.lowest_term.term && (
                 <>
@@ -185,7 +184,7 @@ export default function GPACalculator({ compact = false, bento = false }) {
       {/* Term Breakdown */}
       {gpa?.term_gpas?.length > 0 && (
         <Card>
-          <h2 className="text-lg font-semibold text-white mb-4">Term Breakdown</h2>
+          <h2 className="text-lg font-semibold text-dark-50 mb-4">Term Breakdown</h2>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -204,12 +203,12 @@ export default function GPACalculator({ compact = false, bento = false }) {
                   const isLowest = gpa.lowest_term?.term === t.term && gpa.term_gpas.length > 1;
                   return (
                     <tr key={t.term} className="border-b border-dark-700/50 last:border-0">
-                      <td className="px-4 py-2.5 text-white text-sm font-medium">
+                      <td className="px-4 py-2.5 text-dark-50 text-sm font-medium">
                         {t.term}
                         {isHighest && <span className="ml-2 text-green-400 text-xs">Best</span>}
                         {isLowest && <span className="ml-2 text-red-400 text-xs">Lowest</span>}
                       </td>
-                      <td className="px-4 py-2.5 text-white text-sm font-semibold">{t.gpa.toFixed(2)}</td>
+                      <td className="px-4 py-2.5 text-dark-50 text-sm font-semibold">{t.gpa.toFixed(2)}</td>
                       <td className="px-4 py-2.5 text-dark-300 text-sm">{t.course_count}</td>
                       <td className="px-4 py-2.5 text-dark-300 text-sm">{t.credits}</td>
                       <td className="px-4 py-2.5"><Badge color={color}>{color === 'green' ? 'Good' : color === 'yellow' ? 'Fair' : 'Low'}</Badge></td>
@@ -228,7 +227,7 @@ export default function GPACalculator({ compact = false, bento = false }) {
           onClick={() => setWhatIfOpen(!whatIfOpen)}
           className="flex items-center justify-between w-full text-left"
         >
-          <h2 className="text-lg font-semibold text-white">What-If Calculator</h2>
+          <h2 className="text-lg font-semibold text-dark-50">What-If Calculator</h2>
           <svg className={`w-5 h-5 text-dark-400 transition-transform ${whatIfOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
@@ -237,6 +236,18 @@ export default function GPACalculator({ compact = false, bento = false }) {
         {whatIfOpen && (
           <div className="mt-4 space-y-4">
             <p className="text-dark-400 text-sm">Add hypothetical courses to see how they'd affect your GPA.</p>
+            {/* `isFallback` was destructured and then never read, so a student at
+                a university Acadvo has no scale for silently got a generic 4.0
+                one — and a projected GPA computed on the wrong scale looks
+                exactly like a correct one. Saying so is the same standard the
+                rest of the app holds itself to. */}
+            {isFallback && (
+              <p className="text-amber-300/90 text-xs border border-amber-500/30 bg-amber-500/10 p-2">
+                Acadvo has no grading scale on file for {user?.university || 'your university'},
+                so this projection uses a generic {scale.maxPoints.toFixed(1)}-point scale
+                ({scale.scaleName}). Treat the result as an estimate.
+              </p>
+            )}
 
             {whatIfCourses.length > 0 && (
               <div className="space-y-2">
@@ -245,7 +256,7 @@ export default function GPACalculator({ compact = false, bento = false }) {
                     <input
                       value={c.name}
                       onChange={e => updateWhatIfCourse(i, 'name', e.target.value)}
-                      className="flex-1 bg-dark-800 border border-dark-600 text-white rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      className="flex-1 bg-dark-800 border border-dark-600 text-dark-50 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
                       placeholder="Course name"
                     />
                     <input
@@ -254,12 +265,12 @@ export default function GPACalculator({ compact = false, bento = false }) {
                       min="0"
                       value={c.credits}
                       onChange={e => updateWhatIfCourse(i, 'credits', parseFloat(e.target.value) || 0)}
-                      className="w-20 bg-dark-800 border border-dark-600 text-white rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      className="w-20 bg-dark-800 border border-dark-600 text-dark-50 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
                     />
                     <select
                       value={c.grade}
                       onChange={e => updateWhatIfCourse(i, 'grade', e.target.value)}
-                      className="w-24 bg-dark-800 border border-dark-600 text-white rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      className="w-24 bg-dark-800 border border-dark-600 text-dark-50 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
                     >
                       {scale.grades.map(g => (
                         <option key={g.letter} value={g.letter}>{g.letter} ({g.points})</option>
@@ -281,7 +292,7 @@ export default function GPACalculator({ compact = false, bento = false }) {
               <div className="bg-dark-900/50 border border-dark-700 rounded-lg p-4 flex items-center justify-between">
                 <div>
                   <p className="text-dark-400 text-xs">Projected Cumulative GPA</p>
-                  <p className="text-white text-2xl font-bold">
+                  <p className="text-dark-50 text-2xl font-bold">
                     {projectedGPA}
                     <span className="text-base text-dark-500 font-normal"> / {gpa?.scale_max || scale.maxPoints}</span>
                   </p>

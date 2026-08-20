@@ -76,13 +76,55 @@ async def get_catalog_status(university: str | None, db: AsyncSession) -> dict:
     )
     sources = sorted(s for s in source_rows.scalars() if s)
 
+    subject_rows = await db.execute(
+        select(CatalogCourse.subject_faculty)
+        .where(CatalogCourse.university == university)
+        .distinct()
+    )
+    subjects = sorted(s for s in subject_rows.scalars() if s)
+
     return {
         "university": university,
         "verified": count > 0,
         "course_count": count,
         "last_updated": last_updated,
         "sources": sources,
+        # Which subject areas the catalog actually covers. A catalog is almost
+        # never university-wide: it is built up one program document at a time,
+        # so "we have a York catalog" can still mean "we have York's CS courses
+        # and nothing a Psychology student needs". Callers must check coverage
+        # against the student rather than treating `verified` as blanket truth.
+        "subjects": subjects,
     }
+
+
+class UniversityNotSetError(RuntimeError):
+    """The student has not told us which university they attend.
+
+    Everything catalog-grounded — recommendations, the semester plan, prereq and
+    gate checks — is keyed on the university. Three call sites used to paper over
+    a missing one with ``user.university or "York University"``, which is not a
+    default so much as a wrong answer: a student who skipped that onboarding step
+    was silently advised against York's catalog, in York's course-code format,
+    under York's EECS GPA gate, with nothing on screen saying so. Asking is
+    cheap; guessing produces advice that looks authoritative and is about
+    somebody else's degree.
+    """
+
+    def __init__(self):
+        super().__init__(
+            "Set your university in your profile first — course advice is grounded "
+            "in your university's own catalog, and Acadvo will not guess which one "
+            "you attend."
+        )
+
+
+def require_university(user) -> str:
+    """The user's university, or raise ``UniversityNotSetError``."""
+    university = (getattr(user, "university", None) or "").strip()
+    if not university:
+        raise UniversityNotSetError()
+    return university
 
 
 async def get_catalog(

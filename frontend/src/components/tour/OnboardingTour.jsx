@@ -131,7 +131,8 @@ export default function OnboardingTour() {
   return (
     <>
       {/* Overlay */}
-      <div className="fixed inset-0 bg-black/40 z-[100]" onClick={finish} />
+      {/* Decorative; the tooltip's Skip and Next buttons are the keyboard path out. */}
+      <div aria-hidden="true" className="fixed inset-0 bg-black/40 z-[100]" onClick={finish} />
 
       {/* Tooltip */}
       <div
@@ -139,7 +140,7 @@ export default function OnboardingTour() {
         style={tooltipStyle}
         className="z-[101] w-80 bg-dark-800 border border-dark-600 rounded-xl p-5 shadow-2xl"
       >
-        <h3 className="text-white font-semibold text-sm">{current.title}</h3>
+        <h3 className="text-dark-50 font-semibold text-sm">{current.title}</h3>
         <p className="text-dark-300 text-sm mt-1.5">{current.description}</p>
         <div className="flex items-center justify-between mt-4">
           <div className="flex gap-1">
@@ -153,7 +154,7 @@ export default function OnboardingTour() {
           <div className="flex gap-2">
             <button
               onClick={finish}
-              className="text-dark-400 hover:text-white text-xs transition-colors"
+              className="text-dark-400 hover:text-dark-50 text-xs transition-colors"
             >
               Skip
             </button>

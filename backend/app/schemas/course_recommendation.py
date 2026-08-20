@@ -33,6 +33,10 @@ class CourseRecommendationResponse(BaseModel):
     accepted: bool
     dismissed: bool
     created_at: datetime
+    # See CourseRecommendation.bucket_verdict. Carries `label`, which is the only
+    # string a UI should render for "does this count?" — the hedging for an
+    # inferred verdict is baked into it.
+    bucket_verdict: dict | None = None
 
 
 class CourseSearchResult(BaseModel):
@@ -42,6 +46,9 @@ class CourseSearchResult(BaseModel):
     description: str | None = None
     requirement_bucket: str | None = None
     in_plan: bool = False
+    eligible: bool = True
+    blocked_reason: str | None = None
+    bucket_verdict: dict | None = None
 
 
 class CourseSearchResponse(BaseModel):

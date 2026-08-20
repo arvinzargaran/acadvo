@@ -45,7 +45,7 @@ function ExistingCourses({ courses }) {
         return (
           <div key={term} className="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b border-dark-700 flex items-center justify-between">
-              <h3 className="text-white font-semibold text-sm">{term}</h3>
+              <h3 className="text-dark-50 font-semibold text-sm">{term}</h3>
               <span className="text-dark-400 text-xs">{totalCredits} credits</span>
             </div>
             <div className="p-3 space-y-2">
@@ -80,7 +80,7 @@ function AIPlanView({ plan, onApply, applying }) {
       {/* Plan summary */}
       {plan.plan_summary && (
         <div className="bg-primary-500/5 border border-dark-600 rounded-xl p-4">
-          <h3 className="text-white font-semibold text-sm mb-1">AI Plan Strategy</h3>
+          <h3 className="text-dark-50 font-semibold text-sm mb-1">AI Plan Strategy</h3>
           <p className="text-dark-300 text-sm">{plan.plan_summary}</p>
         </div>
       )}
@@ -106,12 +106,14 @@ function AIPlanView({ plan, onApply, applying }) {
 
           return (
             <div key={semIdx} className="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden">
-              <div
-                className="px-4 py-3 border-b border-dark-700 flex items-center justify-between cursor-pointer hover:bg-dark-750 transition-colors"
+              <button
+                type="button"
+                aria-expanded={isExpanded}
+                className="w-full text-left px-4 py-3 border-b border-dark-700 flex items-center justify-between cursor-pointer hover:bg-dark-750 transition-colors"
                 onClick={() => setExpandedSem(isExpanded ? null : semIdx)}
               >
                 <div>
-                  <h3 className="text-white font-semibold text-sm">{sem.term}</h3>
+                  <h3 className="text-dark-50 font-semibold text-sm">{sem.term}</h3>
                   {sem.semester_notes && (
                     <p className="text-dark-500 text-[10px] mt-0.5">{sem.semester_notes}</p>
                   )}
@@ -122,7 +124,7 @@ function AIPlanView({ plan, onApply, applying }) {
                     <span className="text-primary-400 text-[10px] block">+{newCourses.length} new</span>
                   )}
                 </div>
-              </div>
+              </button>
               <div className="p-3 space-y-2">
                 {sem.courses?.map((course, cIdx) => (
                   <div
@@ -173,7 +175,7 @@ function AIPlanView({ plan, onApply, applying }) {
       {plan.semesters?.some(s => s.courses?.some(c => !c.already_in_plan)) && (
         <div className="flex items-center justify-between bg-dark-800 border border-dark-700 rounded-xl p-4">
           <div>
-            <p className="text-white text-sm font-medium">Apply this plan to your degree</p>
+            <p className="text-dark-50 text-sm font-medium">Apply this plan to your degree</p>
             <p className="text-dark-400 text-xs mt-0.5">
               New courses will be added as "Planned". Existing courses won't be affected.
             </p>
@@ -217,8 +219,8 @@ export default function SemesterPlanner({ courses, onRefresh }) {
       await applySemesterPlan(semesters);
       setPlan(null);
       if (onRefresh) onRefresh();
-    } catch {
-      setError('Failed to apply plan.');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to apply plan.'));
     } finally {
       setApplying(false);
     }
@@ -267,7 +269,7 @@ export default function SemesterPlanner({ courses, onRefresh }) {
         <div className="flex flex-col items-center py-16 gap-4">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-500" />
           <div className="text-center">
-            <p className="text-white font-medium">AI is building your semester plan...</p>
+            <p className="text-dark-50 font-medium">AI is building your semester plan...</p>
             <p className="text-dark-400 text-sm mt-1">Searching your university's course catalog, analyzing prerequisites, and optimizing for your career goals.</p>
           </div>
         </div>
@@ -281,7 +283,7 @@ export default function SemesterPlanner({ courses, onRefresh }) {
       {/* Always show existing courses below */}
       {!generating && courses.length > 0 && (
         <div>
-          {plan && <h3 className="text-white font-semibold mb-3 text-sm">Current Courses</h3>}
+          {plan && <h3 className="text-dark-50 font-semibold mb-3 text-sm">Current Courses</h3>}
           <ExistingCourses courses={courses} />
         </div>
       )}

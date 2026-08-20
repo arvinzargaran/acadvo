@@ -33,7 +33,7 @@ from app.schemas.degree import (
 )
 from app.services import degree as degree_service
 from app.services.catalog import get_catalog_status
-from app.services.document_parser import parse_degree_document
+from app.services.document_parser import UnreadableDocumentError, parse_degree_document
 from app.services.uploads import UploadTooComplexError, validate_upload
 
 router = APIRouter()
@@ -79,6 +79,10 @@ async def parse_document(
         result = await parse_degree_document(file_bytes, mime_type)
     except UploadTooComplexError as e:
         raise HTTPException(status_code=413, detail=str(e))
+    except UnreadableDocumentError as e:
+        # This one carries an instruction the student can act on, so it is not
+        # flattened into the generic message below.
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         logger.error("Document parse error: %s", e)
         err_str = str(e)
@@ -120,14 +124,27 @@ async def gpa_goal(
 @router.get("/gpa/goal/major", response_model=MajorGPAGoalResponse)
 async def gpa_goal_major(
     remaining_credits: float = Query(..., description="Major credits still to be taken"),
-    scope: str = Query("EECS", description="Faculty/subject prefix, e.g. EECS"),
-    gate: float = Query(4.50, ge=0, description="Program major-GPA gate threshold"),
+    scope: str | None = Query(
+        None, description="Faculty/subject prefix. Defaults to your program's own gate."
+    ),
+    gate: float | None = Query(
+        None, ge=0, description="Gate threshold. Defaults to your program's own gate."
+    ),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await degree_service.project_major_gpa_goal(
-        current_user.id, db, remaining_credits, faculty_prefix=scope, gate=gate
-    )
+    # These defaulted to "EECS"/4.50 — York's rule — for every student at every
+    # university, so a UofT student got a confident target computed against a
+    # subject prefix their transcript does not contain. Unset now means "use the
+    # gate my program actually has", and a program with none says so.
+    try:
+        return await degree_service.project_major_gpa_goal(
+            current_user.id, db, remaining_credits, faculty_prefix=scope, gate=gate
+        )
+    except degree_service.NoMajorGateError as exc:
+        # 409, not 422: the request was well-formed, the server just has no such
+        # rule for this student. Same shape as the no-catalog case.
+        raise HTTPException(status_code=409, detail=str(exc))
 
 
 # ── Summary ──────────────────────────────────────────────────────────

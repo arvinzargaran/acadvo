@@ -4,9 +4,13 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from groq import APIConnectionError as GroqConnectionError
+from groq import APIStatusError as GroqAPIStatusError
 from groq import RateLimitError as GroqRateLimitError
 from slowapi.errors import RateLimitExceeded
 
+from app.ai.client import AIDisabledError, AIUnavailableError
+from app.services.catalog import UniversityNotSetError
 from app.config import settings
 from app.limiter import limiter
 from app.observability import (
@@ -71,17 +75,47 @@ async def lifespan(app: FastAPI):
                 "(app.example.com + api.example.com) — that is same-site, so 'lax' "
                 "cookies are still sent."
             )
+        if not settings.SMTP_HOST and not settings.ALLOW_NO_SMTP:
+            # Refuse to start, rather than warn.
+            #
+            # A warning was the wrong severity: with no SMTP, verification links
+            # are only written to the server log, and every AI endpoint is gated
+            # on a verified address. So the deployment comes up healthy, serves
+            # pages, accepts signups — and not one real user can ever reach the
+            # advisor, which is the product. Nothing surfaces that; the operator
+            # sees a green stack and users see a permanent 403.
+            #
+            # Password reset is in the same position: an account locked out of a
+            # forgotten password has no way back in.
+            raise RuntimeError(
+                "SMTP is not configured, so verification and password-reset emails "
+                "cannot be delivered — and every AI feature is gated behind a verified "
+                "address, so no user would be able to use the advisor at all.\n"
+                "Set SMTP_HOST/SMTP_USER/SMTP_PASSWORD, or set ALLOW_NO_SMTP=True to "
+                "run deliberately without email (degree tracking and CRUD keep working; "
+                "the AI features stay unreachable)."
+            )
         if not settings.SMTP_HOST:
             logger.warning(
-                "SMTP is not configured — password-reset and verification emails will be "
-                "logged, not delivered. Set SMTP_HOST/SMTP_USER/SMTP_PASSWORD in production."
+                "Running with ALLOW_NO_SMTP=True: verification and password-reset emails "
+                "are logged, not delivered, so the AI features are unreachable for every user."
             )
         if not settings.RATE_LIMIT_STORAGE_URI:
             logger.warning(
                 "RATE_LIMIT_STORAGE_URI is unset — rate limits are per-process and reset on "
                 "restart. Set a shared store (e.g. redis://) when running multiple workers."
             )
-    yield
+
+    # Background worker for program requirement research. A no-op without
+    # GEMINI_API_KEY, in which case the app keeps exactly the behaviour it has
+    # today: honest gaps rather than guessed requirements.
+    from app.research.runner import start_worker, stop_worker
+
+    start_worker()
+    try:
+        yield
+    finally:
+        await stop_worker()
 
 
 app = FastAPI(
@@ -108,6 +142,84 @@ async def groq_rate_limit_handler(request: Request, exc: GroqRateLimitError):
     return JSONResponse(
         status_code=429,
         content={"detail": "AI rate limit reached. Please wait a moment and try again."},
+    )
+
+
+# Every other way a model call can fail, handled once for every router.
+#
+# Only `/conversations` used to catch these, so anywhere else — course search,
+# document parsing, semester planning, the weekly summary — an unconfigured key
+# or a provider outage escaped as an unhandled exception. That is a bare 500
+# from Starlette's outermost error middleware, which sits *above* the CORS
+# middleware: the response carries no Access-Control-Allow-Origin, so the SPA
+# never sees a status at all, only "Failed to fetch". A whole feature looks like
+# a network fault. Returning a JSONResponse from in here keeps it inside the
+# stack, so it gets CORS headers and the UI can show what actually happened.
+#
+# This was found the hard way: Groq retired the model the app was configured
+# with, and every AI feature failed as an un-attributable network error.
+
+
+@app.exception_handler(UniversityNotSetError)
+async def university_not_set_handler(request: Request, exc: UniversityNotSetError):
+    # App-level so every catalog-grounded endpoint inherits it, including the
+    # ones with no try/except of their own (course search, the plan stream) and
+    # any added later. 409: the request is well-formed, the profile is not.
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
+@app.exception_handler(AIDisabledError)
+async def ai_disabled_handler(request: Request, exc: AIDisabledError):
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "AI features are not configured on this server."},
+    )
+
+
+@app.exception_handler(AIUnavailableError)
+async def ai_unavailable_handler(request: Request, exc: AIUnavailableError):
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "AI features are temporarily unavailable. Please try again shortly."},
+    )
+
+
+@app.exception_handler(GroqConnectionError)
+async def groq_connection_handler(request: Request, exc: GroqConnectionError):
+    logger.error("groq connection failure: %s", exc)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Could not reach the AI service. Please try again shortly."},
+    )
+
+
+@app.exception_handler(GroqAPIStatusError)
+async def groq_api_status_handler(request: Request, exc: GroqAPIStatusError):
+    # Logged with the provider's own status and message because the actionable
+    # ones are all operator-side (a retired model id, a revoked key, an
+    # exhausted quota) and the user-facing text must not repeat them.
+    logger.error(
+        "groq api error: status=%s body=%s",
+        getattr(exc, "status_code", "?"),
+        str(exc)[:500],
+    )
+    # A tokens-per-minute cap does NOT always arrive as a 429. Groq answers a
+    # single request whose prompt plus max_tokens exceeds the account's TPM with
+    # **413** and `code: rate_limit_exceeded` — it is refusing the size, not the
+    # frequency. Reported as a generic failure it reads as "try again", which is
+    # advice that cannot work: the same request is the same size next time. 429
+    # plus a straight explanation is the honest answer.
+    if "rate_limit" in str(exc).lower() or getattr(exc, "status_code", None) in (413, 429):
+        return JSONResponse(
+            status_code=429,
+            content={
+                "detail": "This request is larger than the AI service's current capacity "
+                          "allows. Try again in a minute, or ask for a smaller plan."
+            },
+        )
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "The AI service rejected this request. Please try again shortly."},
     )
 
 

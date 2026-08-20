@@ -88,8 +88,8 @@ export default function DegreePage() {
       setCourses(prev => prev.filter(c => c.id !== courseId));
       const summaryRes = await getDegreeSummary().catch(() => null);
       setSummary(summaryRes?.data);
-    } catch {
-      setError('Failed to delete course.');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to delete course.'));
     }
   };
 
@@ -347,14 +347,17 @@ export default function DegreePage() {
       </Modal>
 
       {/* Import Document Modal */}
+      {/* Was a hand-rolled overlay with a click-to-close backdrop, no focus trap
+          and no Escape. Modal supplies all three; widthClass keeps the wide
+          layout this one needs for the parsed-data review table. */}
       {importOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setImportOpen(false); setParsedData(null); }} />
-          <div className="relative bg-dark-800 border border-dark-700 rounded-xl p-6 w-full max-w-4xl mx-4 shadow-2xl max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-display text-2xl text-dark-50">Import Degree Document</h3>
-              <button onClick={() => { setImportOpen(false); setParsedData(null); }} className="text-dark-400 hover:text-dark-50 transition-colors">&#x2715;</button>
-            </div>
+        <Modal
+          isOpen
+          onClose={() => { setImportOpen(false); setParsedData(null); }}
+          title="Import Degree Document"
+          widthClass="max-w-4xl"
+        >
+          <div>
             {parsedData ? (
               <ParsedDataReview
                 data={parsedData}
@@ -373,7 +376,7 @@ export default function DegreePage() {
               </div>
             )}
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

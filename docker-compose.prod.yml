@@ -45,9 +45,16 @@ services:
       # certificates on every restart, which will hit Let's Encrypt rate limits.
       - caddy_data:/data
       - caddy_config:/config
+    # Gated on health, not just on start: both images declare a HEALTHCHECK, and
+    # the backend's start command runs `alembic upgrade head` before uvicorn
+    # binds. Waiting only for the container to exist means Caddy comes up first,
+    # asks Let's Encrypt for a certificate, and serves 502s to the first
+    # visitors (and to any uptime monitor) for the length of the migration.
     depends_on:
-      - backend
-      - frontend
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
 
   db:
     <<: *hardening

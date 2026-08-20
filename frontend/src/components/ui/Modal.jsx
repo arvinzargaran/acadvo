@@ -1,6 +1,6 @@
 import { useEffect, useRef, useId } from 'react';
 
-export default function Modal({ isOpen, onClose, title, children }) {
+export default function Modal({ isOpen, onClose, title, children, widthClass = 'max-w-lg' }) {
   const cardRef = useRef(null);
   const titleId = useId();
 
@@ -53,8 +53,14 @@ export default function Modal({ isOpen, onClose, title, children }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Overlay */}
+      {/* Overlay.
+          aria-hidden and not focusable on purpose: it is a convenience for mouse
+          users, and duplicating it as a tab stop would put an unlabelled control
+          in front of the dialog's real content. The keyboard paths out are
+          Escape (handled above) and the labelled close button below — both of
+          which this dialog has, which is what makes the disable defensible. */}
       <div
+        aria-hidden="true"
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
@@ -64,14 +70,14 @@ export default function Modal({ isOpen, onClose, title, children }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="relative bg-dark-800 border border-dark-700 rounded-xl p-6 w-full max-w-lg mx-4 shadow-2xl"
+        className={`relative bg-dark-800 border border-dark-700 rounded-xl p-6 w-full ${widthClass} mx-4 shadow-2xl max-h-[85vh] overflow-y-auto`}
       >
         <div className="flex items-center justify-between mb-4">
-          <h3 id={titleId} className="text-lg font-semibold text-white">{title}</h3>
+          <h3 id={titleId} className="text-lg font-semibold text-dark-50">{title}</h3>
           <button
             onClick={onClose}
             aria-label="Close dialog"
-            className="text-dark-400 hover:text-white transition-colors"
+            className="text-dark-400 hover:text-dark-50 transition-colors"
           >
             &#x2715;
           </button>

@@ -1,86 +1,213 @@
-/* Editorial display face — self-hosted variable font (PWA precache friendly) */
-@import '@fontsource-variable/fraunces';
+/* Signage face — one variable family across the whole product. The `wdth`
+   build carries the width axis, which is what lets station names and labels be
+   set in the expanded caps a wayfinding system uses without a second typeface. */
+@import '@fontsource-variable/archivo/wdth.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ============================================================
-   Editorial Paper — the default theme
-   Warm paper surfaces, ink text, serif headings over a system
-   grotesque body. The numeric --color-dark-* ramp goes light→ink
-   so existing utilities (bg-dark-950 = app bg, bg-dark-800 = card,
-   text-dark-400 = muted) adopt the paper palette with no
-   per-component edits.
-   ============================================================ */
+/* ============================================================================
+   WAYFINDING — the design system for the whole app.
+   ----------------------------------------------------------------------------
+   The premise: a degree is a network. Courses are stations, prerequisites are
+   track, and the product areas are lines. That vocabulary drives the whole
+   interface, not just the marketing page.
+
+   Two rules hold it together:
+     1. Saturated colour appears only in map objects, line bullets, and status
+        signals. Every other surface is strict neutral.
+     2. A line is identified by a LETTER as well as a colour, which is both how
+        real networks name lines and why the interface stays readable to
+        someone who can't separate the red line from the green one.
+   ========================================================================== */
+/* ---- Palette -------------------------------------------------------------
+   Channels, not hex: this is what makes Tailwind's opacity modifiers work
+   against a themed palette (`bg-dark-900/40`, `bg-primary-500/15`). The
+   neutral ramp runs light -> ink in both themes, so `bg-dark-950` is always
+   the page and `text-dark-50` is always primary text. */
 :root {
-  --color-dark-950: #F1EADB; /* app background (paper)     */
-  --color-dark-900: #EBE3D1; /* chrome: sidebar / topbar    */
-  --color-dark-800: #FBF8F1; /* raised cards (cream)        */
-  --color-dark-700: #F0E9DA; /* inputs / hover              */
-  --color-dark-600: #D9CFBC; /* borders                     */
-  --color-dark-500: #B3A88E; /* hairlines / faint           */
-  --color-dark-400: #746754; /* muted / labels (AA 4.60:1)  */
-  --color-dark-300: #6B6150; /* secondary text              */
-  --color-dark-200: #46402F;
-  --color-dark-100: #322B1F;
-  --color-dark-50:  #241E15; /* ink (primary text)          */
-  --text-primary:   #241E15;
-  --paper-flat: #241E15;
+  --c-dark-50: 11 14 20;
+  --c-dark-100: 23 29 38;
+  --c-dark-200: 42 49 60;
+  --c-dark-300: 72 80 92;
+  --c-dark-400: 90 100 114;
+  --c-dark-500: 107 116 130;
+  --c-dark-600: 220 223 228;
+  --c-dark-700: 237 239 243;
+  --c-dark-800: 255 255 255;
+  --c-dark-900: 247 248 250;
+  --c-dark-950: 255 255 255;
+
+  --c-primary-50: 238 243 254;
+  --c-primary-100: 220 231 253;
+  --c-primary-200: 187 207 251;
+  --c-primary-300: 27 98 240;
+  --c-primary-400: 27 98 240;
+  --c-primary-500: 27 98 240;
+  --c-primary-600: 23 80 201;
+  --c-primary-700: 18 63 160;
+  --c-primary-800: 14 48 120;
+  --c-primary-900: 10 34 85;
+  --c-primary-950: 7 23 58;
+
+  --c-signal-red-50: 254 245 244;
+  --c-signal-red-100: 253 234 232;
+  --c-signal-red-200: 248 215 212;
+  --c-signal-red-300: 207 42 30;
+  --c-signal-red-400: 192 35 26;
+  --c-signal-red-500: 217 43 31;
+  --c-signal-red-600: 192 35 26;
+  --c-signal-red-700: 158 28 20;
+  --c-signal-red-800: 122 21 15;
+  --c-signal-red-900: 87 15 11;
+  --c-signal-red-950: 58 10 7;
+
+  --c-signal-amber-50: 254 248 238;
+  --c-signal-amber-100: 252 239 216;
+  --c-signal-amber-200: 247 220 172;
+  --c-signal-amber-300: 194 98 11;
+  --c-signal-amber-400: 166 75 8;
+  --c-signal-amber-500: 232 160 32;
+  --c-signal-amber-600: 184 125 16;
+  --c-signal-amber-700: 138 90 0;
+  --c-signal-amber-800: 107 70 0;
+  --c-signal-amber-900: 77 50 0;
+  --c-signal-amber-950: 51 33 0;
+
+  --c-signal-green-50: 239 250 245;
+  --c-signal-green-100: 216 243 231;
+  --c-signal-green-200: 174 231 206;
+  --c-signal-green-300: 0 120 80;
+  --c-signal-green-400: 0 135 90;
+  --c-signal-green-500: 0 135 90;
+  --c-signal-green-600: 0 105 70;
+  --c-signal-green-700: 0 84 56;
+  --c-signal-green-800: 0 64 43;
+  --c-signal-green-900: 0 44 29;
+  --c-signal-green-950: 0 28 19;
+
+  /* Named tokens for hand-written CSS and inline styles. */
+  --wf-canvas: #FFFFFF;
+  --wf-panel:  #F7F8FA;
+  --wf-sunk:   #EDEFF3;
+  --wf-rule:   #DCDFE4;
+  --wf-ink:    #0B0E14;
+  --wf-muted:  #5A6472;
+
+  --wf-line-c: #D92B1F;  /* C - degree / required spine */
+  --wf-line-w: #00875A;  /* W - work / co-op            */
+  --wf-live:   #1B62F0;  /* A - advisor, and "you are here" */
+
+  /* Line colours set as *text* need darker variants to clear 4.5:1. */
+  --wf-line-c-text: #C0231A;
+  --wf-line-w-text: #00875A;
+
+  --wf-on-line: #FFFFFF;
+  --text-primary: #0B0E14;
 }
 
-/* Dark theme — "Warm ink": a warm-charcoal scale with genuine elevation.
-   Deliberately kept off pure black, but with clear steps between the app
-   background, chrome, and raised cards so surfaces read as layered rather
-   than flat. A faint warm cast ties it to the amber accent and the paper
-   theme's character. */
 :root.dark {
-  --color-dark-950: #1B1A17; /* app background (deepest)    */
-  --color-dark-900: #201E1A; /* chrome: sidebar / topbar    */
-  --color-dark-800: #2A2824; /* raised cards (clearly above bg) */
-  --color-dark-700: #35322D; /* inputs / hover              */
-  --color-dark-600: #423E38; /* borders                     */
-  --color-dark-500: #565049; /* hairlines / faint           */
-  --color-dark-400: #A8A199; /* muted / labels (AA on bg)   */
-  --color-dark-300: #C7C1B8; /* secondary text              */
-  --color-dark-200: #DCD7CE;
-  --color-dark-100: #EBE7DF;
-  --color-dark-50:  #F5F2EC; /* ink (primary text, warm white) */
-  --text-primary:   #F5F2EC;
+  --c-dark-50: 242 244 247;
+  --c-dark-100: 232 236 241;
+  --c-dark-200: 213 219 227;
+  --c-dark-300: 179 188 201;
+  --c-dark-400: 154 165 180;
+  --c-dark-500: 124 135 151;
+  --c-dark-600: 37 44 56;
+  --c-dark-700: 28 34 45;
+  --c-dark-800: 20 25 34;
+  --c-dark-900: 16 21 29;
+  --c-dark-950: 11 14 20;
+
+  --c-primary-50: 14 24 48;
+  --c-primary-100: 19 34 74;
+  --c-primary-200: 27 51 114;
+  --c-primary-300: 157 188 255;
+  --c-primary-400: 143 179 255;
+  --c-primary-500: 27 98 240;
+  --c-primary-600: 23 80 201;
+  --c-primary-700: 18 63 160;
+  --c-primary-800: 200 217 255;
+  --c-primary-900: 226 235 255;
+  --c-primary-950: 240 245 255;
+
+  --c-signal-red-50: 26 11 9;
+  --c-signal-red-100: 46 19 16;
+  --c-signal-red-200: 74 29 25;
+  --c-signal-red-300: 255 143 133;
+  --c-signal-red-400: 255 107 94;
+  --c-signal-red-500: 217 43 31;
+  --c-signal-red-600: 192 35 26;
+  --c-signal-red-700: 255 143 133;
+  --c-signal-red-800: 255 181 174;
+  --c-signal-red-900: 255 210 205;
+  --c-signal-red-950: 255 233 230;
+
+  --c-signal-amber-50: 26 19 5;
+  --c-signal-amber-100: 46 33 10;
+  --c-signal-amber-200: 74 54 17;
+  --c-signal-amber-300: 245 200 102;
+  --c-signal-amber-400: 240 183 64;
+  --c-signal-amber-500: 232 160 32;
+  --c-signal-amber-600: 201 138 21;
+  --c-signal-amber-700: 240 183 64;
+  --c-signal-amber-800: 247 220 172;
+  --c-signal-amber-900: 251 235 206;
+  --c-signal-amber-950: 253 245 232;
+
+  --c-signal-green-50: 4 22 15;
+  --c-signal-green-100: 8 40 27;
+  --c-signal-green-200: 14 66 48;
+  --c-signal-green-300: 111 227 184;
+  --c-signal-green-400: 61 217 160;
+  --c-signal-green-500: 0 168 107;
+  --c-signal-green-600: 0 135 90;
+  --c-signal-green-700: 61 217 160;
+  --c-signal-green-800: 147 237 203;
+  --c-signal-green-900: 194 245 225;
+  --c-signal-green-950: 228 251 242;
+
+  --wf-canvas: #0B0E14;
+  --wf-panel:  #10151D;
+  --wf-sunk:   #141922;
+  --wf-rule:   #252C38;
+  --wf-ink:    #F2F4F7;
+  --wf-muted:  #9AA5B4;
+
+  --wf-line-c: #FF6B5E;
+  --wf-line-w: #3DD9A0;
+  --wf-live:   #6E9BFF;
+
+  --wf-line-c-text: #FF6B5E;
+  --wf-line-w-text: #3DD9A0;
+
+  --wf-on-line: #0B0E14;
+  --text-primary: #F2F4F7;
 }
 
-html {
-  background-color: var(--color-dark-950);
-}
+/* ---- Base ---------------------------------------------------------------- */
+
+html { background-color: theme('colors.dark.950'); }
 
 body {
   @apply bg-dark-950 text-dark-50 font-sans antialiased;
   transition: background-color 0.2s, color 0.2s;
 }
 
-/* Editorial serif for headings; body text stays on the system grotesque.
-   Fraunces (variable, self-hosted) leads the stack; Iowan/Palatino remain as
-   metric-compatible fallbacks while the font file streams in. */
 @layer base {
-  h1, h2, h3 {
-    font-family: 'Fraunces Variable', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
-    letter-spacing: -0.01em;
-    font-variation-settings: 'opsz' 72, 'SOFT' 30, 'WONK' 0;
+  h1, h2, h3, h4 {
+    font-family: 'Archivo Variable', system-ui, sans-serif;
+    font-variation-settings: 'wdth' 112;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.08;
   }
 }
 
-.font-display {
-  font-family: 'Fraunces Variable', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
-  letter-spacing: -0.01em;
-  font-variation-settings: 'opsz' 72, 'SOFT' 30, 'WONK' 0;
-}
-
-/* Brand-tinted selection + a single consistent keyboard focus style. */
-::selection {
-  background-color: rgba(255, 138, 0, 0.25);
-}
-/* Keyboard-only focus ring: 2px brand-orange outline on all interactive
-   elements. :focus-visible keeps it off mouse clicks; readable in both themes. */
+/* Keyboard-only focus ring. Deliberately the live blue and deliberately thick:
+   on a flat, square, low-chrome interface the ring is the only affordance that
+   moves, so it has to be unmissable. */
 a:focus-visible,
 button:focus-visible,
 [role="button"]:focus-visible,
@@ -88,262 +215,205 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 [tabindex]:not([tabindex="-1"]):focus-visible {
-  outline: 2px solid #F07E00;
+  outline: 3px solid var(--wf-live);
   outline-offset: 2px;
-  border-radius: 3px;
+  border-radius: 2px;
 }
 
-/* Prose (AI chat markdown): invert only in the dark theme */
-.prose {
-  @apply dark:prose-invert;
+::selection { background-color: color-mix(in srgb, var(--wf-live) 24%, transparent); }
+
+.prose { @apply dark:prose-invert; }
+
+/* ---- Signage typography --------------------------------------------------
+   One family, differentiated by width and weight the way a real signage system
+   is: station names and labels run expanded caps, body runs normal. */
+
+.wf-signage {
+  font-family: 'Archivo Variable', system-ui, sans-serif;
+  text-transform: uppercase;
+  font-variation-settings: 'wdth' 118;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
-/* ---- Map hardcoded white utilities onto warm ink for the paper theme ----
-   (the dark theme keeps them white). Applies whenever :root is NOT .dark. */
-:root:not(.dark) .text-white { color: var(--text-primary); }
-:root:not(.dark) :is(.text-white\/70, .hover\:text-white\/70:hover) { color: rgb(36 30 21 / 0.72); }
-:root:not(.dark) :is(.text-white\/60, .hover\:text-white\/60:hover) { color: rgb(36 30 21 / 0.62); }
-:root:not(.dark) .text-white\/40 { color: rgb(36 30 21 / 0.5); }
-:root:not(.dark) .text-white\/30 { color: rgb(36 30 21 / 0.42); }
-:root:not(.dark) .hover\:text-white:hover { color: var(--text-primary); }
+.wf-display {
+  font-family: 'Archivo Variable', system-ui, sans-serif;
+  font-variation-settings: 'wdth' 112;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.04;
+}
 
-:root:not(.dark) .bg-white\/2  { background-color: rgb(36 30 21 / 0.02); }
-:root:not(.dark) .bg-white\/3  { background-color: rgb(36 30 21 / 0.03); }
-:root:not(.dark) :is(.bg-white\/5,  .hover\:bg-white\/5:hover)  { background-color: rgb(36 30 21 / 0.045); }
-:root:not(.dark) :is(.bg-white\/10, .hover\:bg-white\/10:hover) { background-color: rgb(36 30 21 / 0.07); }
-:root:not(.dark) .bg-white\/40 { background-color: rgb(251 248 241 / 0.6); }
-:root:not(.dark) .bg-white\/50 { background-color: rgb(251 248 241 / 0.75); }
+/* Course codes, IDs, and any tabular figure. Codes are the product's real
+   vocabulary, so they get their own face rather than being set as prose. */
+.wf-code {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
 
-:root:not(.dark) .border-white\/5  { border-color: rgb(36 30 21 / 0.07); }
-:root:not(.dark) .border-white\/8  { border-color: rgb(36 30 21 / 0.09); }
-:root:not(.dark) .border-white\/10 { border-color: rgb(36 30 21 / 0.13); }
-:root:not(.dark) .border-white\/15 { border-color: rgb(36 30 21 / 0.16); }
-:root:not(.dark) :is(.border-white\/20, .hover\:border-white\/20:hover) { border-color: rgb(36 30 21 / 0.2); }
-:root:not(.dark) :is(.border-white\/25, .hover\:border-white\/25:hover) { border-color: rgb(36 30 21 / 0.26); }
-:root:not(.dark) :is(.border-white\/40, .hover\:border-white\/40:hover) { border-color: rgb(36 30 21 / 0.4); }
+.wf-num { font-variant-numeric: tabular-nums; }
 
-/* Light grays used as muted text read too faint on paper — warm them to ink tints.
-   (gray-600..900 are dark enough to keep; the dark theme is untouched.) */
-:root:not(.dark) .text-gray-100 { color: rgb(36 30 21 / 0.88); }
-:root:not(.dark) .text-gray-200 { color: rgb(36 30 21 / 0.82); }
-:root:not(.dark) .text-gray-300 { color: rgb(36 30 21 / 0.68); }
-:root:not(.dark) .text-gray-400 { color: #746754; }
-:root:not(.dark) .text-gray-500 { color: #746754; }
+/* ---- Line bullets --------------------------------------------------------
+   The roundel: a colour AND a letter. */
 
-/* Hide scrollbars on opt-in scroll containers (e.g. mobile card rows). */
+.wf-bullet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  font-family: 'Archivo Variable', system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 0.8125rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.wf-bullet-c    { background: var(--wf-line-c); color: var(--wf-on-line); }
+.wf-bullet-w    { background: var(--wf-line-w); color: var(--wf-on-line); }
+.wf-bullet-live { background: var(--wf-live);   color: var(--wf-on-line); }
+
+/* ---- Surfaces ------------------------------------------------------------
+   Depth comes from a hard offset edge, the way a routed sign sits off its
+   backing — never from a soft ambient shadow. */
+
+.wf-panel { background: var(--wf-panel); border: 1px solid var(--wf-rule); }
+.wf-sunk  { background: var(--wf-sunk); }
+
+.wf-raised {
+  background: var(--wf-canvas);
+  border: 1px solid var(--wf-rule);
+  box-shadow: 3px 3px 0 0 var(--wf-rule);
+}
+.wf-raised-strong {
+  background: var(--wf-canvas);
+  border: 1.5px solid var(--wf-ink);
+  box-shadow: 5px 5px 0 0 var(--wf-ink);
+}
+
+/* ---- Station sign --------------------------------------------------------
+   Section headers are platform signs: a marker, the name in expanded caps, and
+   a rule running out to the edge of the measure. */
+
+.wf-sign { display: flex; align-items: center; gap: 0.875rem; }
+.wf-sign::after { content: ''; flex: 1; height: 2px; background: var(--wf-rule); }
+
+/* ---- Track --------------------------------------------------------------- */
+
+.wf-track-line { stroke-linecap: round; stroke-linejoin: round; fill: none; }
+
+.wf-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 1200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.wf-draw.is-drawn { stroke-dashoffset: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .wf-draw { transition: none; stroke-dashoffset: 0; }
+}
+
+/* The landing page's margin rail only appears once there is genuinely empty
+   gutter beside the measure to hang it in. */
+.wf-rail { display: none; }
+@media (min-width: 1440px) { .wf-rail { display: block; } }
+
+/* ---- Carried-over class names -------------------------------------------
+   These names are used across ~60 components. Rather than rename every call
+   site, each is redefined in the signage vocabulary: the semantics they encode
+   (raised surface, tinted icon chip, accent button, small caps label) all still
+   apply — only the visual language underneath has changed. */
+
+/* Was a layered ink shadow. Now the hard offset edge. */
+.shadow-editorial { box-shadow: 3px 3px 0 0 var(--wf-rule); }
+
+/* Was a gradient sheen over cream. Now a flat plate that reads by its rule. */
+.card-rich {
+  background: var(--wf-canvas);
+  border: 1px solid var(--wf-rule);
+}
+
+/* Was a warm amber gradient chip. Now a sunk neutral tile. */
+.icon-chip {
+  background: var(--wf-sunk);
+  border: 1px solid var(--wf-rule);
+  color: var(--wf-live);
+}
+
+/* Was an amber gradient fill. Now the solid ink plate the whole system uses
+   for a primary action. */
+.btn-accent {
+  background-image: none;
+  background-color: var(--wf-ink);
+  color: var(--wf-canvas);
+  box-shadow: none;
+}
+.btn-accent:hover {
+  background-image: none;
+  background-color: var(--wf-live);
+  color: #FFFFFF;
+}
+
+/* Small-caps label. Now set on the signage face. */
+.eyebrow {
+  font-family: 'Archivo Variable', system-ui, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--wf-muted);
+}
+
+/* Was warm amber blooms behind the auth screens. Now the network's own faint
+   graph paper — the same grid the planner draws on. */
+.aurora-warm {
+  background-image:
+    linear-gradient(to right,  rgb(var(--c-dark-500) / 0.16) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(var(--c-dark-500) / 0.16) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 20%, transparent 76%);
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 20%, transparent 76%);
+}
+.bg-editorial-grid { background-image: none; }
+
+/* Was a warm gradient headline word. Now the critical-path red, flat. */
+.text-gradient-warm,
+.text-gradient-warm * {
+  background-image: none;
+  -webkit-text-fill-color: currentColor;
+  color: var(--wf-line-c-text);
+}
+
+/* ---- Utilities ----------------------------------------------------------- */
+
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 
-/* Custom scrollbar */
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background-color: var(--color-dark-900); }
-::-webkit-scrollbar-thumb { background-color: var(--color-dark-600); border-radius: 9999px; }
-::-webkit-scrollbar-thumb:hover { background-color: var(--color-dark-500); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background-color: var(--wf-panel); }
+::-webkit-scrollbar-thumb { background-color: var(--wf-rule); border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background-color: var(--wf-muted); }
 
-/* University logos: invert to white only on the dark theme; the paper theme
-   shows them as-is. */
 :root.dark .logo-dark-invert { filter: brightness(0) invert(1); }
-
-/* ---- Editorial depth & texture ------------------------------------------ */
-
-/* Film-grain overlay: gives the flat paper surface a tactile print feel.
-   Multiply on paper, screen on the dim theme. Kept below the navbar (z-50). */
-.grain-overlay {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 40;
-  opacity: 0.05;
-  mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-:root.dark .grain-overlay {
-  mix-blend-mode: screen;
-  opacity: 0.028;
-}
-
-/* Layered ink shadow — replaces the single flat shadow-xl on hero/product mocks. */
-.shadow-editorial {
-  box-shadow:
-    0 1px 2px rgb(36 30 21 / 0.05),
-    0 6px 16px rgb(36 30 21 / 0.07),
-    0 28px 60px -16px rgb(36 30 21 / 0.22);
-}
-:root.dark .shadow-editorial {
-  box-shadow:
-    0 1px 2px rgb(0 0 0 / 0.4),
-    0 8px 20px rgb(0 0 0 / 0.35),
-    0 32px 64px -16px rgb(0 0 0 / 0.5);
-}
-
-/* ---- Scroll artifacts (parallax decorations) ----------------------------- */
-.artifact { position: absolute; pointer-events: none; }
-.artifact-orb {
-  background: radial-gradient(circle, rgba(255, 138, 0, 0.3), transparent 65%);
-  filter: blur(28px);
-  border-radius: 9999px;
-}
-.artifact-ring { border: 1.5px solid rgba(36, 30, 21, 0.16); border-radius: 9999px; }
-:root.dark .artifact-ring { border-color: rgba(242, 242, 242, 0.13); }
-
-/* ---- Rich background textures & surfaces --------------------------------- */
-
-/* Editorial ruled grid — faint ledger lines, radially masked so they bloom out
-   of the center and dissolve toward the edges. Used behind the hero. */
-.bg-editorial-grid {
-  background-image:
-    linear-gradient(to right,  rgb(36 30 21 / 0.045) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(36 30 21 / 0.045) 1px, transparent 1px);
-  background-size: 62px 62px;
-  -webkit-mask-image: radial-gradient(ellipse 72% 62% at 50% 42%, #000 25%, transparent 78%);
-  mask-image: radial-gradient(ellipse 72% 62% at 50% 42%, #000 25%, transparent 78%);
-}
-:root.dark .bg-editorial-grid {
-  background-image:
-    linear-gradient(to right,  rgb(255 255 255 / 0.035) 1px, transparent 1px),
-    linear-gradient(to bottom, rgb(255 255 255 / 0.035) 1px, transparent 1px);
-}
-
-/* Warm aurora — layered amber blooms for hero / CTA depth. */
-.aurora-warm {
-  background:
-    radial-gradient(58% 55% at 15% 8%,  rgba(255, 138, 0, 0.16), transparent 60%),
-    radial-gradient(48% 48% at 88% 18%, rgba(255, 162, 46, 0.11), transparent 62%),
-    radial-gradient(75% 60% at 50% 108%, rgba(255, 138, 0, 0.13), transparent 66%);
-}
-:root.dark .aurora-warm {
-  background:
-    radial-gradient(58% 55% at 15% 8%,  rgba(255, 138, 0, 0.18), transparent 60%),
-    radial-gradient(48% 48% at 88% 18%, rgba(255, 162, 46, 0.12), transparent 62%),
-    radial-gradient(75% 60% at 50% 108%, rgba(255, 138, 0, 0.14), transparent 66%);
-}
-
-/* Warm amber gradient text for accent headline words. Applied to the element
-   and its spans so it survives the word-split reveal markup. */
-.text-gradient-warm,
-.text-gradient-warm * {
-  background-image: linear-gradient(115deg, #FF8A00 0%, #FFB347 48%, #F07E00 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-}
-
-/* Rich raised card — a top sheen + hairline ring over the flat card surface,
-   with a warm corner glow that lifts on hover. */
-.card-rich {
-  position: relative;
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 0.55), transparent 42%),
-    var(--color-dark-800);
-  box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.4);
-}
-:root.dark .card-rich {
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 0.045), transparent 42%),
-    var(--color-dark-800);
-  box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.05);
-}
-.card-rich::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.4s ease;
-  background: radial-gradient(120% 90% at 100% 0%, rgba(255, 138, 0, 0.12), transparent 55%);
-}
-.card-rich:hover::after { opacity: 1; }
-
-/* Tinted icon chip for feature tiles. */
-.icon-chip {
-  background: linear-gradient(160deg, rgba(255, 138, 0, 0.16), rgba(255, 138, 0, 0.05));
-  border: 1px solid rgba(255, 138, 0, 0.22);
-}
-
-/* ---- UI primitives -------------------------------------------------------- */
-
-/* Warm amber gradient fill for the Button `accent` variant. */
-.btn-accent {
-  background-image: linear-gradient(135deg, #FF8A00, #F07E00);
-  color: #fff;
-  box-shadow: 0 1px 2px rgb(240 126 0 / 0.35), 0 4px 12px -2px rgb(240 126 0 / 0.3);
-}
-.btn-accent:hover {
-  background-image: linear-gradient(135deg, #FF9A1F, #F58600);
-}
-
-/* Editorial eyebrow — uppercase, tracked, muted-brand label. */
-.eyebrow {
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--color-dark-400);
-}
-
-/* Skeleton loading shimmer — a highlight sweeps left→right over the muted base. */
-@keyframes shimmer {
-  100% { transform: translateX(100%); }
-}
-.skeleton-shimmer {
-  position: relative;
-  overflow: hidden;
-}
-.skeleton-shimmer::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.35), transparent);
-  animation: shimmer 1.6s ease-in-out infinite;
-}
-:root.dark .skeleton-shimmer::after {
-  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.07), transparent);
-}
-@media (prefers-reduced-motion: reduce) {
-  .skeleton-shimmer::after { animation: none; }
-}
-
-/* ---- Editorial typography refinements ------------------------------------ */
-
-/* Hanging punctuation — quotes/opening marks hang into the margin (Safari). */
-.hang-punct { hanging-punctuation: first last; }
-
-/* Drop cap — an editorial oversized first letter for a lead paragraph. */
-.dropcap::first-letter {
-  float: left;
-  font-family: 'Fraunces Variable', 'Iowan Old Style', Palatino, Georgia, serif;
-  font-weight: 600;
-  font-size: 3.1em;
-  line-height: 0.72;
-  padding: 0.02em 0.1em 0 0;
-  color: var(--color-dark-50);
-  font-variation-settings: 'opsz' 72, 'SOFT' 40, 'WONK' 1;
-}
-.dropcap::first-letter { color: #F07E00; } /* warm amber initial */
-
-.manifesto-word { display: inline-block; }
-
-/* Pinned spotlight stacks: hide the non-first layers until GSAP takes over,
-   so there's no overlap flash while the lazy chunk loads. GSAP's inline
-   autoAlpha styles override these rules once the timeline is built. */
-.spot-panel:not(:first-of-type),
-.spot-text:not(:first-of-type) {
-  opacity: 0;
-  visibility: hidden;
-}
 
 @keyframes marquee-left {
   0%   { transform: translateX(0); }
   100% { transform: translateX(-50%); }
 }
-@keyframes marquee-right {
-  0%   { transform: translateX(-50%); }
-  100% { transform: translateX(0); }
+.marquee-left { animation: marquee-left var(--marquee-duration, 30s) linear infinite; }
+.marquee-left:hover { animation-play-state: paused; }
+
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+.skeleton-shimmer { position: relative; overflow: hidden; }
+.skeleton-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(var(--c-dark-500) / 0.5), transparent);
+  animation: shimmer 1.6s ease-in-out infinite;
 }
-.marquee-left  { animation: marquee-left  var(--marquee-duration, 30s) linear infinite; }
-.marquee-right { animation: marquee-right var(--marquee-duration, 30s) linear infinite; }
-.marquee-left:hover,
-.marquee-right:hover { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer::after { animation: none; }
+}

@@ -144,7 +144,15 @@ async def review_resume(
     mime_type = validate_upload(file_bytes, file.content_type, _RESUME_MIME_TYPES)
 
     import base64
-    from app.ai.client import acomplete, get_groq_client, run_blocking
+    from app.ai.client import (
+        json_kwargs,
+        AI_PROVIDER_ERRORS,
+        acomplete,
+        completion_text,
+        get_groq_client,
+        run_blocking,
+        vision_kwargs,
+    )
     from app.config import settings
 
     client = get_groq_client()
@@ -165,6 +173,7 @@ async def review_resume(
                 model=settings.GROQ_MODEL,
                 messages=[{"role": "user", "content": f"{prompt}\n\nResume text:\n\n{resume_text}"}],
                 max_tokens=2048,
+                **json_kwargs(),
             )
         else:
             b64 = base64.b64encode(file_bytes).decode()
@@ -179,20 +188,21 @@ async def review_resume(
                     ],
                 }],
                 max_tokens=2048,
+                **vision_kwargs(),
             )
-        text = response.choices[0].message.content.strip()
+        text = completion_text(response)
     except UploadTooComplexError as e:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=str(e)
         )
+    except AI_PROVIDER_ERRORS:
+        # Re-raised so main.py's handlers can name the real cause.
+        raise
     except Exception:
         raise HTTPException(
             status_code=422,
             detail="AI could not process this file. Try a clearer scan or different format.",
         )
-
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
 
     # Record that the user reviewed their resume
     current_user.last_resume_review = datetime.now(timezone.utc)

@@ -3,6 +3,7 @@ import Card from '../ui/Card';
 import Skeleton from '../ui/Skeleton';
 import Button from '../ui/Button';
 import { getWeeklySummary } from '../../api/dashboard';
+import { getErrorMessage } from '../../utils/errors';
 
 const CACHE_KEY = 'acadvo_weekly_summary';
 const CACHE_TTL = 12 * 60 * 60 * 1000; // 12 hours
@@ -14,7 +15,7 @@ export default function WeeklyCheckin({ bento = false }) {
       try {
         const { data, timestamp } = JSON.parse(cached);
         if (Date.now() - timestamp < CACHE_TTL) return data;
-      } catch {}
+      } catch { /* corrupt cache entry: fall through and regenerate */ }
     }
     return null;
   });
@@ -29,8 +30,11 @@ export default function WeeklyCheckin({ bento = false }) {
       const res = await getWeeklySummary();
       setSummary(res.data);
       localStorage.setItem(CACHE_KEY, JSON.stringify({ data: res.data, timestamp: Date.now() }));
-    } catch {
-      setError('Failed to generate summary.');
+    } catch (err) {
+      // The server distinguishes "AI is not configured here" from "you are over
+      // your token limit" from a genuine outage; a flat "failed to generate"
+      // throws that away and leaves the widget looking broken with no next step.
+      setError(getErrorMessage(err, 'Failed to generate summary.'));
     } finally {
       setLoading(false);
     }
@@ -49,7 +53,7 @@ export default function WeeklyCheckin({ bento = false }) {
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-primary-500 animate-pulse" />
-            <h3 className="text-white font-semibold">Weekly Check-in</h3>
+            <h3 className="text-dark-50 font-semibold">Weekly Check-in</h3>
           </div>
           <span className="text-dark-400 text-xs">Generating…</span>
         </div>
@@ -68,7 +72,7 @@ export default function WeeklyCheckin({ bento = false }) {
     return (
       <W>
         <div className="py-2">
-          <h3 className="font-display text-xl text-white">Your weekly check-in</h3>
+          <h3 className="font-display text-xl text-dark-50">Your weekly check-in</h3>
           <p className="text-dark-400 text-sm mt-1 mb-4 max-w-sm">An AI-written recap of your progress, highlights, and next steps.</p>
           <Button variant="accent" onClick={generate}>Generate summary</Button>
           {error && <p className="text-red-400 text-sm mt-3">{error}</p>}
@@ -80,8 +84,8 @@ export default function WeeklyCheckin({ bento = false }) {
   return (
     <W>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-display text-lg text-white">Weekly Check-in</h3>
-        <button onClick={generate} className="text-dark-400 hover:text-white text-xs transition-colors">
+        <h3 className="font-display text-lg text-dark-50">Weekly Check-in</h3>
+        <button onClick={generate} className="text-dark-400 hover:text-dark-50 text-xs transition-colors">
           Refresh
         </button>
       </div>

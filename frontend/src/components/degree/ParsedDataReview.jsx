@@ -28,7 +28,7 @@ export default function ParsedDataReview({ data, onConfirm, onCancel }) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-semibold text-white mb-1">Review Parsed Data</h3>
+        <h3 className="text-lg font-semibold text-dark-50 mb-1">Review Parsed Data</h3>
         <p className="text-dark-400 text-sm">Edit any fields before saving. Remove rows you don't need.</p>
       </div>
 
@@ -46,7 +46,7 @@ export default function ParsedDataReview({ data, onConfirm, onCancel }) {
               <input
                 value={req.bucket_name}
                 onChange={(e) => updateReq(i, 'bucket_name', e.target.value)}
-                className="flex-1 bg-dark-800 border border-dark-600 text-white rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
+                className="flex-1 bg-dark-800 border border-dark-600 text-dark-50 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
                 placeholder="Bucket name"
               />
               <input
@@ -54,7 +54,7 @@ export default function ParsedDataReview({ data, onConfirm, onCancel }) {
                 step="0.5"
                 value={req.credits_required}
                 onChange={(e) => updateReq(i, 'credits_required', parseFloat(e.target.value) || 0)}
-                className="w-24 bg-dark-800 border border-dark-600 text-white rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
+                className="w-24 bg-dark-800 border border-dark-600 text-dark-50 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
                 placeholder="Credits"
               />
               <button onClick={() => removeReq(i)} className="text-dark-400 hover:text-red-400 transition-colors">
@@ -82,13 +82,13 @@ export default function ParsedDataReview({ data, onConfirm, onCancel }) {
                 <input
                   value={course.course_code}
                   onChange={(e) => updateCourse(i, 'course_code', e.target.value)}
-                  className="w-28 bg-dark-800 border border-dark-600 text-white rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  className="w-28 bg-dark-800 border border-dark-600 text-dark-50 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
                   placeholder="Code"
                 />
                 <input
                   value={course.course_name}
                   onChange={(e) => updateCourse(i, 'course_name', e.target.value)}
-                  className="flex-1 min-w-[150px] bg-dark-800 border border-dark-600 text-white rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  className="flex-1 min-w-[150px] bg-dark-800 border border-dark-600 text-dark-50 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
                   placeholder="Course name"
                 />
                 <input
@@ -96,13 +96,13 @@ export default function ParsedDataReview({ data, onConfirm, onCancel }) {
                   step="0.25"
                   value={course.credit_value}
                   onChange={(e) => updateCourse(i, 'credit_value', parseFloat(e.target.value) || 0)}
-                  className="w-20 bg-dark-800 border border-dark-600 text-white rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  className="w-20 bg-dark-800 border border-dark-600 text-dark-50 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
                   placeholder="Credits"
                 />
                 <select
                   value={course.requirement_bucket || ''}
                   onChange={(e) => updateCourse(i, 'requirement_bucket', e.target.value)}
-                  className="w-36 bg-dark-800 border border-dark-600 text-white rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  className="w-36 bg-dark-800 border border-dark-600 text-dark-50 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
                 >
                   <option value="">No bucket</option>
                   {requirements.map((r, ri) => (
@@ -112,7 +112,7 @@ export default function ParsedDataReview({ data, onConfirm, onCancel }) {
                 <select
                   value={course.status}
                   onChange={(e) => updateCourse(i, 'status', e.target.value)}
-                  className="w-32 bg-dark-800 border border-dark-600 text-white rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  className="w-32 bg-dark-800 border border-dark-600 text-dark-50 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
                 >
                   <option value="completed">Completed</option>
                   <option value="in_progress">In Progress</option>
@@ -122,7 +122,7 @@ export default function ParsedDataReview({ data, onConfirm, onCancel }) {
                 <input
                   value={course.grade || ''}
                   onChange={(e) => updateCourse(i, 'grade', e.target.value)}
-                  className="w-16 bg-dark-800 border border-dark-600 text-white rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  className="w-16 bg-dark-800 border border-dark-600 text-dark-50 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
                   placeholder="Grade"
                 />
                 <button onClick={() => removeCourse(i)} className="text-dark-400 hover:text-red-400 transition-colors">

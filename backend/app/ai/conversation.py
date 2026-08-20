@@ -17,6 +17,7 @@ from sqlalchemy.orm import selectinload
 
 from app.ai.client import (
     AIUnavailableError,
+    clean_model_text,
     get_groq_client,
     record_ai_success,
     record_ai_failure,
@@ -213,7 +214,9 @@ async def send_message(
 
         if not tool_calls:
             # Final text response
-            assistant_text = assistant_message.content or ""
+            # Shown to the user verbatim: strip a reasoning block if the model
+            # emitted one inline, but never touch fenced code they asked for.
+            assistant_text = clean_model_text(assistant_message.content, strip_fence=False)
 
             assistant_msg = Message(
                 conversation_id=conversation_id,

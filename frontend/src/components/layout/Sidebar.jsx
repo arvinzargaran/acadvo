@@ -41,6 +41,13 @@ const navSections = [
   },
 ];
 
+/**
+ * A stop on the line. The nav is drawn as a route diagram rather than a list of
+ * buttons: a continuous track runs down the gutter (see the section wrapper
+ * below) and each destination is a station on it. The current page is the
+ * filled station — the same "you are here" marker the landing map uses, in the
+ * same blue, so the two halves of the product read as one system.
+ */
 function NavItem({ to, label, icon, onClose }) {
   return (
     <NavLink
@@ -48,23 +55,29 @@ function NavItem({ to, label, icon, onClose }) {
       end={to === '/dashboard'}
       onClick={onClose}
       className={({ isActive }) =>
-        `group relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-          isActive
-            ? 'bg-primary-500/12 text-dark-50'
-            : 'text-dark-300 hover:text-dark-50 hover:bg-dark-800/70'
+        `group relative flex items-center gap-3 py-2 pl-8 pr-3 text-sm font-medium transition-colors ${
+          isActive ? 'text-dark-50' : 'text-dark-300 hover:text-dark-50'
         }`
       }
     >
       {({ isActive }) => (
         <>
-          {/* Active indicator rail */}
           <span
-            className={`absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r-full bg-primary-500 transition-all ${
-              isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-40'
-            }`}
+            aria-hidden="true"
+            className="absolute left-[9px] top-1/2 -translate-y-1/2 -translate-x-1/2 rounded-full transition-all duration-200"
+            style={{
+              width: isActive ? 13 : 8,
+              height: isActive ? 13 : 8,
+              background: isActive ? 'var(--wf-live)' : 'var(--wf-canvas)',
+              boxShadow: `0 0 0 ${isActive ? 3 : 2.5}px ${
+                isActive ? 'var(--wf-live)' : 'var(--wf-rule)'
+              }`,
+            }}
           />
           <svg
-            className={`w-5 h-5 shrink-0 transition-colors ${isActive ? 'text-primary-500' : 'text-dark-400 group-hover:text-dark-200'}`}
+            className={`w-[18px] h-[18px] shrink-0 transition-colors ${
+              isActive ? 'text-primary-500' : 'text-dark-400 group-hover:text-dark-200'
+            }`}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -82,18 +95,18 @@ export default function Sidebar({ onClose }) {
   const { user } = useAuth();
 
   return (
-    <aside className="h-screen w-64 bg-dark-900 border-r border-dark-800 flex flex-col transition-colors">
+    <aside className="h-screen w-64 bg-dark-900 border-r-2 border-dark-600 flex flex-col transition-colors">
       {/* Wordmark */}
       <div className="px-5 py-5 flex items-center justify-between">
         <NavLink to="/dashboard" onClick={onClose} className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl btn-accent font-display text-lg font-bold leading-none">
+          <span className="wf-bullet wf-bullet-live" style={{ width: '2rem', height: '2rem', fontSize: '1rem' }} aria-hidden="true">
             A
           </span>
           <span>
-            <span className="block text-xl font-bold font-display text-dark-50 tracking-tight leading-none">
+            <span className="wf-signage block text-lg text-dark-50 leading-none">
               Acadvo
             </span>
-            <span className="block text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-dark-400 mt-0.5">
+            <span className="wf-signage block text-[0.58rem] text-dark-400 mt-1">
               Academic Advisor
             </span>
           </span>
@@ -109,23 +122,33 @@ export default function Sidebar({ onClose }) {
 
       <nav className="flex-1 overflow-y-auto px-3 pb-4 space-y-5" data-tour="sidebar-nav">
         {navSections.map((section) => (
-          <div key={section.label} className="space-y-1">
-            <p className="eyebrow px-3 pb-1 text-[0.62rem]">{section.label}</p>
-            {section.items.map((item) => (
-              <NavItem key={item.to} {...item} onClose={onClose} />
-            ))}
+          <div key={section.label}>
+            <p className="eyebrow pl-8 pb-2 text-[0.62rem]">{section.label}</p>
+            {/* The track the stations sit on. Inset to end half a station short
+                of the first and last stop, so the line terminates at them
+                rather than running past into nothing. */}
+            <div className="relative">
+              <span
+                aria-hidden="true"
+                className="absolute left-[9px] top-4 bottom-4 w-[2px] -translate-x-1/2"
+                style={{ background: 'var(--wf-rule)' }}
+              />
+              {section.items.map((item) => (
+                <NavItem key={item.to} {...item} onClose={onClose} />
+              ))}
+            </div>
           </div>
         ))}
       </nav>
 
       {/* User identity footer */}
-      <div className="px-3 py-3 border-t border-dark-800">
+      <div className="px-3 py-3 border-t-2 border-dark-600">
         <NavLink
           to="/settings"
           onClick={onClose}
           className={({ isActive }) =>
-            `flex items-center gap-3 px-2 py-2 rounded-xl transition-colors ${
-              isActive ? 'bg-dark-800' : 'hover:bg-dark-800/70'
+            `flex items-center gap-3 px-2 py-2 transition-colors ${
+              isActive ? 'bg-dark-700' : 'hover:bg-dark-700'
             }`
           }
         >

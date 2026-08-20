@@ -7,7 +7,7 @@ export default function NextActions({ suggestions, onAccept, onDismiss }) {
   if (!suggestions || suggestions.length === 0) {
     return (
       <Card>
-        <h3 className="text-white font-semibold mb-2">Next Actions</h3>
+        <h3 className="text-dark-50 font-semibold mb-2">Next Actions</h3>
         <p className="text-dark-400 text-sm">No pending suggestions. Ask your advisor for recommendations.</p>
       </Card>
     );
@@ -15,7 +15,7 @@ export default function NextActions({ suggestions, onAccept, onDismiss }) {
 
   return (
     <Card>
-      <h3 className="text-white font-semibold mb-3">Next Actions</h3>
+      <h3 className="text-dark-50 font-semibold mb-3">Next Actions</h3>
       <div className="space-y-3">
         {suggestions.slice(0, 3).map(s => (
           <div key={s.id} className="bg-dark-700/50 rounded-lg p-3">

@@ -5,14 +5,6 @@ const statusDot = {
   not_scheduled: 'bg-dark-500',
 };
 
-const statusLabel = {
-  completed: 'Completed',
-  in_progress: 'In Progress',
-  planned: 'Planned',
-  not_scheduled: 'Not Scheduled',
-};
-
-const statusOrder = { completed: 0, in_progress: 1, planned: 2, not_scheduled: 3 };
 
 function parseTerm(term) {
   if (!term) return { order: 99999, label: 'Unscheduled' };
@@ -42,7 +34,6 @@ function groupCourses(courses) {
     } else {
       // Group by status for courses without proper semester assignments
       const status = course.status || 'not_scheduled';
-      const label = statusLabel[status] || 'Other';
       if (status === 'completed') {
         key = `__status__Completed`;
       } else if (status === 'in_progress') {
@@ -127,7 +118,7 @@ export default function PrerequisiteFlow({ courses }) {
                     >
                       <div className="flex items-center gap-2">
                         <div className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot[course.status] || statusDot.not_scheduled}`} />
-                        <span className="text-white text-xs font-medium truncate">{course.course_code}</span>
+                        <span className="text-dark-50 text-xs font-medium truncate">{course.course_code}</span>
                       </div>
                       <p className="text-dark-400 text-[10px] mt-0.5 truncate pl-4">{course.course_name}</p>
                       <div className="flex items-center gap-2 pl-4 mt-0.5">

@@ -1,4 +1,3 @@
-import Card from '../ui/Card';
 
 function generateAlerts({ summary, courses, projects, events }) {
   const alerts = [];
@@ -96,7 +95,7 @@ export default function SmartAlerts({ summary, courses, projects, events }) {
 
   return (
     <div className="bg-white/5 border border-white/10 rounded-xl p-5 shadow-sm">
-      <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+      <h3 className="text-dark-50 font-semibold mb-3 flex items-center gap-2">
         <svg className="w-4 h-4 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.832c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
         </svg>

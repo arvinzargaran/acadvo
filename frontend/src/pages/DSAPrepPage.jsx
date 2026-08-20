@@ -33,15 +33,9 @@ const PATTERNS = [
 ];
 
 const DIFFICULTY_COLORS = {
-  easy: '#4ade80',
-  medium: '#facc15',
-  hard: '#f87171',
-};
-
-const STATUS_LABELS = {
-  not_started: 'Not Started',
-  attempted: 'Attempted',
-  solved: 'Solved',
+  easy: 'rgb(var(--c-signal-green-400))',
+  medium: 'rgb(var(--c-signal-amber-400))',
+  hard: 'rgb(var(--c-signal-red-400))',
 };
 
 export default function DSAPrepPage() {
@@ -201,21 +195,21 @@ export default function DSAPrepPage() {
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm text-dark-300 mb-1">Title</label>
-                <input
+                <label htmlFor="dsapreppage-title" className="block text-sm text-dark-300 mb-1">Title</label>
+                <input id="dsapreppage-title"
                   value={newProblem.title}
                   onChange={e => setNewProblem(p => ({ ...p, title: e.target.value }))}
-                  className="w-full bg-dark-800 border border-dark-600 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   placeholder="e.g. Two Sum"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm text-dark-300 mb-1">Difficulty</label>
-                <select
+                <label htmlFor="dsapreppage-difficulty" className="block text-sm text-dark-300 mb-1">Difficulty</label>
+                <select id="dsapreppage-difficulty"
                   value={newProblem.difficulty}
                   onChange={e => setNewProblem(p => ({ ...p, difficulty: e.target.value }))}
-                  className="w-full bg-dark-800 border border-dark-600 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 >
                   <option value="easy">Easy</option>
                   <option value="medium">Medium</option>
@@ -223,11 +217,11 @@ export default function DSAPrepPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm text-dark-300 mb-1">Pattern</label>
-                <select
+                <label htmlFor="dsapreppage-pattern" className="block text-sm text-dark-300 mb-1">Pattern</label>
+                <select id="dsapreppage-pattern"
                   value={newProblem.pattern}
                   onChange={e => setNewProblem(p => ({ ...p, pattern: e.target.value }))}
-                  className="w-full bg-dark-800 border border-dark-600 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 >
                   {PATTERNS.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
@@ -235,20 +229,20 @@ export default function DSAPrepPage() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-dark-300 mb-1">LeetCode URL (optional)</label>
-                <input
+                <label htmlFor="dsapreppage-leetcode-url-optional" className="block text-sm text-dark-300 mb-1">LeetCode URL (optional)</label>
+                <input id="dsapreppage-leetcode-url-optional"
                   value={newProblem.leetcode_url}
                   onChange={e => setNewProblem(p => ({ ...p, leetcode_url: e.target.value }))}
-                  className="w-full bg-dark-800 border border-dark-600 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   placeholder="https://leetcode.com/problems/..."
                 />
               </div>
               <div>
-                <label className="block text-sm text-dark-300 mb-1">Notes (optional)</label>
-                <input
+                <label htmlFor="dsapreppage-notes-optional" className="block text-sm text-dark-300 mb-1">Notes (optional)</label>
+                <input id="dsapreppage-notes-optional"
                   value={newProblem.notes}
                   onChange={e => setNewProblem(p => ({ ...p, notes: e.target.value }))}
-                  className="w-full bg-dark-800 border border-dark-600 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   placeholder="Key insight, time complexity, etc."
                 />
               </div>
@@ -293,8 +287,9 @@ export default function DSAPrepPage() {
               <h2 className="font-display text-xl text-dark-50">Problems</h2>
               <select
                 value={patternFilter}
+                aria-label="Filter problems by pattern"
                 onChange={e => setPatternFilter(e.target.value)}
-                className="bg-dark-800 border border-dark-600 text-white rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
                 <option value="all">All Patterns</option>
                 {PATTERNS.map(p => <option key={p} value={p}>{p}</option>)}
@@ -341,12 +336,12 @@ export default function DSAPrepPage() {
                             href={safeExternalUrl(problem.leetcode_url)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-sm font-medium text-white hover:text-primary-400 transition-colors truncate"
+                            className="text-sm font-medium text-dark-50 hover:text-primary-400 transition-colors truncate"
                           >
                             {problem.title}
                           </a>
                         ) : (
-                          <span className="text-sm font-medium text-white truncate">{problem.title}</span>
+                          <span className="text-sm font-medium text-dark-50 truncate">{problem.title}</span>
                         )}
                         <span className="flex-shrink-0">
                           <Badge color="gray" variant="label">{problem.pattern}</Badge>
@@ -420,14 +415,14 @@ export default function DSAPrepPage() {
                 <span className="text-dark-50 font-semibold">{weeklySolved}</span> / {weeklyGoal} problems
               </p>
               <div className="flex items-center gap-2 mt-3">
-                <label className="text-xs text-dark-400">Goal:</label>
-                <input
+                <label htmlFor="dsapreppage-goal" className="text-xs text-dark-400">Goal:</label>
+                <input id="dsapreppage-goal"
                   type="number"
                   min="1"
                   max="100"
                   value={weeklyGoal}
                   onChange={e => handleGoalChange(e.target.value)}
-                  className="w-16 bg-dark-800 border border-dark-600 text-white rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-16 bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
                 <span className="text-xs text-dark-400">/week</span>
               </div>

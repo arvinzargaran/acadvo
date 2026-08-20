@@ -18,8 +18,16 @@ from app.schemas.course_recommendation import (
     CourseSearchResult,
     RecommendationRequest,
 )
+from app.ai.client import AI_PROVIDER_ERRORS
+from app.services.catalog import UniversityNotSetError
+from app.ai.research_client import is_research_enabled
+from app.config import settings
+from app.models.requirement_rule import JOB_FAILED, JOB_PENDING, JOB_RUNNING
+from app.research import runner as research_runner
+from app.research.schema import RuleRejected, validate_requirements_url
 from app.services import course_recommendation as rec_service
-from app.services.semester_plan import generate_semester_plan, generate_semester_plan_stream, apply_semester_plan
+from app.services.requirement_rules import get_rules, rules_summary
+from app.services.semester_plan import PlanGenerationError, generate_semester_plan, generate_semester_plan_stream, apply_semester_plan
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +70,22 @@ async def generate_recommendations(
         return await rec_service.generate_recommendations(
             current_user.id, body.semester, body.goal, body.requirement_bucket, db
         )
+    except rec_service.NoCoverageError as exc:
+        # Same class of problem as NoCatalogError — the server can't satisfy this
+        # yet and retrying won't change that — so the same non-retryable 409.
+        raise HTTPException(status_code=409, detail=str(exc))
+    except UniversityNotSetError as exc:
+        # 409 alongside NoCatalogError: the request is fine, the profile is not.
+        raise HTTPException(status_code=409, detail=str(exc))
+    except rec_service.NoCatalogError as exc:
+        # Not a failure to retry: there is no catalog for this university, so
+        # retrying produces the same nothing. 409 rather than 422 — the request
+        # was fine, the server state can't satisfy it. Caught before the
+        # catch-all below, which would otherwise tell the student to "try again".
+        raise HTTPException(status_code=409, detail=str(exc))
+    except AI_PROVIDER_ERRORS:
+        # Re-raised so main.py's handlers can name the real cause.
+        raise
     except Exception:
         logger.exception("Recommendation generation error")
         raise HTTPException(status_code=422, detail="Failed to generate recommendations. Please try again.")
@@ -91,6 +115,187 @@ async def dismiss_recommendation(
     return rec
 
 
+# ── Program requirement rules (researched once, cached, reused) ──────
+#
+# The read side of the "AI decides, decision is cached" design. This endpoint is
+# also a research trigger: a student opening their planner in an uncovered
+# program is exactly the signal that program is worth researching, which is how
+# coverage grows from real usage instead of from someone maintaining a list.
+
+
+def _research_state(job, rule_count: int, enabled: bool) -> tuple[str, str]:
+    """Map job + rule state to a (state, message) the UI can render verbatim.
+
+    Every branch says what Acadvo does NOT know, because the alternative — a
+    spinner that never resolves, or a blank panel — reads to a student as "this
+    course does not count for anything", which is a claim nobody made.
+    """
+    if rule_count:
+        return "ready", f"Acadvo has requirement rules for {rule_count} bucket(s) in your program."
+    if not enabled:
+        return (
+            "unavailable",
+            "Acadvo has not worked out your program's requirement rules, and "
+            "requirement research is not configured on this server. Course "
+            "advice still works; it just will not say which requirement a "
+            "course satisfies.",
+        )
+    if job is None:
+        return (
+            "needs_url",
+            "Acadvo can work out which courses satisfy each of your degree "
+            "requirements — it just needs a link to your program's official "
+            "requirements page to read. Paste one and it will apply to every "
+            "student in your program.",
+        )
+    if job.status in (JOB_PENDING, JOB_RUNNING):
+        return (
+            "researching",
+            "Acadvo is reading your university's published requirements for your "
+            "program. This runs once and then applies to every student in it — "
+            "your planner and GPA tracking work normally meanwhile.",
+        )
+    if job.status == JOB_FAILED:
+        return (
+            "failed",
+            "Acadvo could not read your program's requirements from that page, so "
+            "it will not guess which requirement a course satisfies. Try a "
+            "different link to your program's official requirements. Everything "
+            "else still works.",
+        )
+    return (
+        "empty",
+        "Acadvo's research found no requirement rules it could verify for your "
+        "program.",
+    )
+
+
+@router.get("/program-rules")
+async def program_rules(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """What Acadvo knows about this student's program requirements, and why."""
+    university, program = current_user.university, current_user.program
+    rules = await get_rules(university, program, db)
+    enabled = is_research_enabled()
+
+    if not rules and settings.RESEARCH_USE_SEARCH_GROUNDING:
+        # Auto-queue only when the model can FIND the pages itself. Without
+        # Search grounding a job with no URL cannot succeed, and enqueueing one
+        # would show the student a spinner that resolves to a failure instead of
+        # the "paste your requirements page" prompt that would actually help.
+        await research_runner.ensure_research(db, university, program)
+
+    job = await research_runner.get_job(db, university, program)
+    state, message = _research_state(job, len(rules), enabled)
+
+    return {
+        "university": university,
+        "program": program,
+        "state": state,
+        "message": message,
+        "research_enabled": enabled,
+        "job": None
+        if job is None
+        else {
+            "status": job.status,
+            "attempts": job.attempts,
+            "requested_at": job.requested_at,
+            "finished_at": job.finished_at,
+            # Surfaced rather than buried in logs: "we could not read your
+            # university's pages" is a legitimate answer a student can act on.
+            "last_error": job.last_error,
+            "source_urls": list(job.source_urls or []),
+        },
+        **rules_summary(rules),
+    }
+
+
+class ProgramRulesRequest(BaseModel):
+    """The one thing a human supplies in this whole pipeline.
+
+    Finding the requirements page automatically needs Google Search grounding,
+    which is billed; reading a page you name is free. So one student per program
+    links their official requirements page, and every student in that program is
+    covered from then on — the same bargain as the checklist upload.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    url: str = Field(min_length=8, max_length=2000)
+
+
+@router.post("/program-rules/research")
+@limiter.limit("5/day")
+async def research_program_rules_endpoint(
+    request: Request,
+    body: ProgramRulesRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Queue research for this student's program from a requirements page URL."""
+    if not is_research_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Requirement research is not configured on this server.",
+        )
+    if not current_user.university or not current_user.program:
+        raise HTTPException(
+            status_code=422,
+            detail="Set your university and program before requesting requirement research.",
+        )
+    try:
+        url = validate_requirements_url(body.url)
+    except RuleRejected as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    job = await research_runner.request_refresh(
+        db, current_user.university, current_user.program, urls=[url]
+    )
+    return {
+        "status": job.status,
+        "source_urls": list(job.source_urls or []),
+        "message": (
+            "Queued. Acadvo will read that page and work out your program's "
+            "requirement rules — they will appear here shortly, and will apply to "
+            "every student in your program."
+        ),
+    }
+
+
+@router.post("/program-rules/refresh")
+@limiter.limit("3/day")
+async def refresh_program_rules(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ask for this program's rules to be re-researched.
+
+    Rate-limited hard: this is the one expensive call in the system, and a
+    per-program job row means a re-run helps everyone in the program, so nobody
+    needs to trigger it often.
+    """
+    if not is_research_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Requirement research is not configured on this server.",
+        )
+    if not current_user.university or not current_user.program:
+        raise HTTPException(
+            status_code=422,
+            detail="Set your university and program before requesting requirement research.",
+        )
+    job = await research_runner.request_refresh(
+        db, current_user.university, current_user.program
+    )
+    return {
+        "status": job.status if job else "unavailable",
+        "message": "Queued. Requirement rules will appear here once the research completes.",
+    }
+
+
 # ── AI Semester Plan ─────────────────────────────────────────────
 
 
@@ -107,6 +312,16 @@ async def generate_plan(
     skip_winters = body.get("skip_winters", False)
     try:
         return await generate_semester_plan(current_user.id, db, skip_summers=skip_summers, skip_winters=skip_winters)
+    except AI_PROVIDER_ERRORS:
+        # Re-raised so main.py's handlers can name the real cause.
+        raise
+    except UniversityNotSetError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except PlanGenerationError as exc:
+        # Already phrased for the student, and it says which of the two things
+        # went wrong (cut short vs. unusable), so it is not flattened.
+        logger.warning("Semester plan unusable: %s", exc)
+        raise HTTPException(status_code=422, detail=str(exc))
     except Exception:
         logger.exception("Semester plan generation error")
         raise HTTPException(status_code=422, detail="Failed to generate plan. Please try again.")

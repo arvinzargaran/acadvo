@@ -5,7 +5,6 @@ function ToolCallItem({ toolCall }) {
   const { tool, input, result } = toolCall;
 
   const isError = result?.error || result?.status === 'error';
-  const accentColor = isError ? 'red' : 'green';
 
   return (
     <div className="rounded-lg border border-dark-700 overflow-hidden mb-2">

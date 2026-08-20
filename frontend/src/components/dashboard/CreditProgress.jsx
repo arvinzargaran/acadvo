@@ -2,11 +2,11 @@ import Card from '../ui/Card';
 import ProgressRing from '../ui/ProgressRing';
 
 export default function CreditProgress({ summary, bento = false }) {
-  if (!summary) return bento ? <div><h3 className="text-white font-semibold mb-2">Credits</h3><p className="text-dark-400 text-sm">No degree data yet.</p></div> : null;
+  if (!summary) return bento ? <div><h3 className="text-dark-50 font-semibold mb-2">Credits</h3><p className="text-dark-400 text-sm">No degree data yet.</p></div> : null;
 
   const content = (
     <>
-      <h3 className="text-white font-semibold mb-3">Degree Progress</h3>
+      <h3 className="text-dark-50 font-semibold mb-3">Degree Progress</h3>
       <div className="flex items-center gap-4 mb-4">
         <ProgressRing
           value={summary.overall_percentage}
@@ -15,7 +15,7 @@ export default function CreditProgress({ summary, bento = false }) {
           label=""
         />
         <div className="text-sm text-dark-300 min-w-0">
-          <p className="font-display tabular-nums text-white text-2xl whitespace-nowrap">{summary.total_credits_completed} / {summary.total_credits_required}</p>
+          <p className="font-display tabular-nums text-dark-50 text-2xl whitespace-nowrap">{summary.total_credits_completed} / {summary.total_credits_required}</p>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-dark-400 mt-0.5">credits completed</p>
         </div>
       </div>

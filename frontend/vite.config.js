@@ -67,6 +67,9 @@ export default defineConfig({
     },
   },
   server: {
+    // Honour PORT so more than one dev server can run side by side; falls back
+    // to Vite's default when it isn't set.
+    port: Number(process.env.PORT) || 5173,
     proxy: {
       '/api': {
         target: 'http://localhost:8000',

@@ -109,12 +109,23 @@ async def get_stats(user_id: uuid.UUID, db: AsyncSession) -> dict:
         for pat, c in sorted(pattern_counts.items(), key=lambda x: -x[1])
     ]
 
-    # Weekly solved (last 7 days)
+    # Weekly solved (last 7 days).
+    #
+    # solved_at is normalised before comparing: the column is timestamptz and
+    # Postgres hands back an aware datetime, but a naive one — from a driver that
+    # does not carry tzinfo, or a row written by a migration — makes this
+    # comparison raise TypeError and takes the whole stats endpoint down with it.
+    # `authenticate_user` already guards its own timestamp the same way.
     week_ago = datetime.now(timezone.utc) - timedelta(days=7)
-    weekly_solved = sum(
-        1 for p in solved
-        if p.solved_at and p.solved_at >= week_ago
-    )
+    weekly_solved = 0
+    for p in solved:
+        solved_at = p.solved_at
+        if solved_at is None:
+            continue
+        if solved_at.tzinfo is None:
+            solved_at = solved_at.replace(tzinfo=timezone.utc)
+        if solved_at >= week_ago:
+            weekly_solved += 1
 
     return {
         "total_solved": total_solved,

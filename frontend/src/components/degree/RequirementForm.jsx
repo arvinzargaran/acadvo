@@ -63,8 +63,8 @@ export default function RequirementForm({ onSave, onCancel }) {
       />
 
       <div className="space-y-1">
-        <label className="block text-sm font-medium text-gray-700 dark:text-dark-300">Notes (optional)</label>
-        <textarea
+        <label htmlFor="requirementform-notes-optional" className="block text-sm font-medium text-gray-700 dark:text-dark-300">Notes (optional)</label>
+        <textarea id="requirementform-notes-optional"
           value={form.notes}
           onChange={e => handleChange('notes', e.target.value)}
           rows={3}

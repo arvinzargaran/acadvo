@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.ai.client import acomplete, get_groq_client
+from app.ai.client import acomplete, get_groq_client, completion_text
 from app.config import settings
 from app.models.user import User
 from app.models.degree import Assessment, DegreeRequirement, Course, CourseStatus
@@ -146,7 +146,10 @@ async def _add_course(inp: dict, user_id: uuid.UUID, conv_id: uuid.UUID | None, 
 
     # Catalog-grounded eligibility check. Fail OPEN when the code isn't in the
     # catalog (unseeded / other university) — allow the add but still normalize.
-    catalog = await get_catalog(user.university or "York University", db, user_id=user_id)
+    # No "or York": with no university on file the catalog is the student's own
+    # courses only, which is the honest best-effort here. Substituting York's
+    # would check this course against another school's prerequisites.
+    catalog = await get_catalog(user.university or "", db, user_id=user_id)
     entry = catalog.get(code)
     if entry is not None:
         satisfied = await get_completed_codes(user_id, db)
@@ -441,7 +444,9 @@ Format the results as a JSON array of objects with keys: course_code, course_nam
             messages=[{"role": "user", "content": prompt}],
             max_tokens=2048,
         )
-        recommendations = response.choices[0].message.content
+        # Prose handed back to the model, so the fence stays; only a reasoning
+        # block would be noise.
+        recommendations = completion_text(response, strip_fence=False)
     except Exception:
         recommendations = None
 

@@ -1,8 +1,8 @@
 import { Link } from 'react-router';
 
 /**
- * Split-screen auth shell — an editorial marketing panel (lg+) beside the
- * form column. Collapses to a single centered form column on small screens.
+ * Split-screen auth shell — a signage panel (lg+) beside the form column.
+ * Collapses to a single centered form column on small screens.
  *
  * Props:
  *  - eyebrow   uppercase tracked label above the title
@@ -25,27 +25,32 @@ export default function AuthLayout({ eyebrow, title, children, wide = false }) {
         <div className="bg-editorial-grid absolute inset-0 pointer-events-none opacity-70" />
 
         <Link to="/" className="relative flex items-center gap-2.5 w-fit">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl btn-accent font-display text-xl font-bold leading-none">
+          <span className="wf-bullet wf-bullet-live" style={{ width: '2.25rem', height: '2.25rem', fontSize: '1.1rem' }} aria-hidden="true">
             A
           </span>
-          <span className="text-2xl font-bold font-display text-dark-50 tracking-tight">Acadvo</span>
+          <span className="wf-signage text-xl text-dark-50">Acadvo</span>
         </Link>
 
         <div className="relative max-w-md">
-          <p className="eyebrow mb-4">Built for Canadian students</p>
-          <h2 className="font-display text-4xl xl:text-5xl leading-[1.05] tracking-tight text-dark-50">
-            Graduate on time.
+          <p className="eyebrow mb-5">Built for Canadian students</p>
+          <h2 className="wf-display text-4xl xl:text-5xl text-dark-50">
+            Your degree is a network.
             <br />
-            <span className="text-gradient-warm">Land the internship.</span>
+            <span style={{ color: 'var(--wf-line-c-text)' }}>Here is the map.</span>
           </h2>
           <ul className="mt-8 space-y-3.5">
             {PROOF.map((item) => (
               <li key={item} className="flex items-start gap-3 text-dark-200">
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-500/15 ring-1 ring-inset ring-primary-500/30">
-                  <svg className="h-3 w-3 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                  </svg>
-                </span>
+                <span
+                  aria-hidden="true"
+                  className="mt-[0.4rem] shrink-0 rounded-full"
+                  style={{
+                    width: 9,
+                    height: 9,
+                    background: 'var(--wf-canvas)',
+                    boxShadow: '0 0 0 2.5px var(--wf-live)',
+                  }}
+                />
                 <span className="text-sm leading-snug">{item}</span>
               </li>
             ))}
@@ -53,7 +58,9 @@ export default function AuthLayout({ eyebrow, title, children, wide = false }) {
         </div>
 
         <p className="relative text-sm text-dark-400">
-          <span className="font-semibold text-dark-200">25+ universities</span> supported · Free forever
+          {/* Matches the Service summary on the landing page and the FAQ:
+              24 selectable universities in data/universities.js. */}
+          <span className="font-semibold text-dark-200">24 universities</span> supported · Free forever
         </p>
       </aside>
 

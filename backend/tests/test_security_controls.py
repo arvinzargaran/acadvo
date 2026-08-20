@@ -465,7 +465,7 @@ async def test_unverified_account_cannot_use_the_ai_advisor(unverified_client):
     resp = await unverified_client.post("/conversations", json={"title": "Hi"})
     assert resp.status_code == 403
     assert "Verify your email" in resp.json()["detail"]
-    assert "AI advisor" in resp.json()["detail"]
+    assert "AI features" in resp.json()["detail"]
 
 
 async def test_unverified_account_cannot_generate_a_plan(unverified_client):

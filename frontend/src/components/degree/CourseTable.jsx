@@ -134,6 +134,7 @@ export default function CourseTable({ courses, requirements, credentials = [], o
           <input
             type="text"
             placeholder="Search courses..."
+            aria-label="Search your courses"
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="bg-dark-800 border border-dark-700 rounded-lg px-3 py-1.5 text-sm text-dark-50 placeholder-dark-500 w-48 focus:outline-none focus:border-primary-500"

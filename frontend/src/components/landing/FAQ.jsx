@@ -11,7 +11,9 @@ const FAQS = [
   },
   {
     q: 'Which universities are supported?',
-    a: "25+ Canadian universities including Waterloo, UofT, UBC, McGill, Western, Queen's, and TMU — and the planner works for any program at any school.",
+    // Kept in step with the Service summary on the landing page: 24 selectable
+    // universities, 16 with a grading scale Acadvo already knows.
+    a: "24 Canadian universities are built in, and 16 of those — Waterloo, UofT, UBC, McGill, Western, Queen's, TMU and others — come with their grading scale already set up. The planner itself works for any program at any school, since it reads your requirements from the checklist you upload.",
   },
   {
     q: 'Will it work for my specific program?',
@@ -79,7 +81,7 @@ function FaqItem({ item, index, isOpen, onToggle }) {
             transition={reduced ? { duration: 0 } : { duration: 0.3, ease }}
             className="overflow-hidden"
           >
-            <p className="text-gray-400 leading-relaxed pb-5 pr-8">{item.a}</p>
+            <p className="text-dark-400 leading-relaxed pb-5 pr-8">{item.a}</p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -92,14 +94,8 @@ export default function FAQ() {
   const [openIndex, setOpenIndex] = useState(null);
 
   return (
-    <section id="faq" className="py-28 md:py-32 px-6">
-      <div className="max-w-3xl mx-auto">
-        <div className="flex items-center gap-4 mb-10">
-          <span className="font-display text-primary-600 text-base">08</span>
-          <span className="text-[11px] tracking-[0.28em] uppercase text-gray-400 whitespace-nowrap">Questions</span>
-          <div className="h-px flex-1 bg-dark-600/70" />
-        </div>
-
+    <div>
+      <div>
         <h2 className="font-display font-bold text-dark-50 tracking-tight text-4xl md:text-5xl mb-12">
           Frequently{' '}
           <span className="text-gradient-warm">asked.</span>
@@ -117,6 +113,6 @@ export default function FAQ() {
           ))}
         </div>
       </div>
-    </section>
+    </div>
   );
 }

@@ -7,9 +7,12 @@ export default function ProgressBar({ value = 0, label, className = '' }) {
           <span className="text-sm text-dark-400">{Math.round(value)}%</span>
         </div>
       )}
-      <div className="w-full h-2 bg-dark-700 rounded-full overflow-hidden">
+      {/* A progress bar is a length of track, not a pill: square ends, one
+          flat colour, so it reads as the same object as the route lines
+          elsewhere in the product. */}
+      <div className="w-full h-2 bg-[var(--wf-sunk)] border border-[var(--wf-rule)] overflow-hidden">
         <div
-          className="h-full bg-gradient-to-r from-primary-400 to-primary-600 rounded-full transition-all duration-300"
+          className="h-full bg-[var(--wf-live)] transition-[width] duration-300"
           style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
         />
       </div>

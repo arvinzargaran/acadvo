@@ -94,8 +94,8 @@ export default function CourseForm({ course, requirements, credentials = [], onS
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-1">
-          <label className="block text-sm font-medium text-gray-700 dark:text-dark-300">Grade</label>
-          <select
+          <label htmlFor="courseform-grade" className="block text-sm font-medium text-gray-700 dark:text-dark-300">Grade</label>
+          <select id="courseform-grade"
             value={form.grade}
             onChange={e => handleChange('grade', e.target.value)}
             className="w-full bg-white dark:bg-dark-800 border border-gray-200 dark:border-dark-600 text-gray-900 dark:text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
@@ -107,8 +107,8 @@ export default function CourseForm({ course, requirements, credentials = [], onS
           </select>
         </div>
         <div className="space-y-1">
-          <label className="block text-sm font-medium text-gray-700 dark:text-dark-300">Requirement</label>
-          <select
+          <label htmlFor="courseform-requirement" className="block text-sm font-medium text-gray-700 dark:text-dark-300">Requirement</label>
+          <select id="courseform-requirement"
             value={form.requirement_bucket_id}
             onChange={e => handleChange('requirement_bucket_id', e.target.value)}
             className="w-full bg-white dark:bg-dark-800 border border-gray-200 dark:border-dark-600 text-gray-900 dark:text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
@@ -122,8 +122,8 @@ export default function CourseForm({ course, requirements, credentials = [], onS
       </div>
 
       <div className="space-y-1">
-        <label className="block text-sm font-medium text-gray-700 dark:text-dark-300">Credential</label>
-        <select
+        <label htmlFor="courseform-credential" className="block text-sm font-medium text-gray-700 dark:text-dark-300">Credential</label>
+        <select id="courseform-credential"
           value={form.credential_id}
           onChange={e => handleChange('credential_id', e.target.value)}
           className="w-full bg-white dark:bg-dark-800 border border-gray-200 dark:border-dark-600 text-gray-900 dark:text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"

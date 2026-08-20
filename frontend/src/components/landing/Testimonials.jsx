@@ -101,8 +101,8 @@ export default function Testimonials() {
   const reduced = useReducedMotion();
 
   return (
-    <section className="py-28 md:py-32 px-6">
-      <div className="max-w-6xl mx-auto">
+    <div>
+      <div>
         {/* Header */}
         <motion.div
           initial={reduced ? false : { opacity: 0, y: 16 }}
@@ -111,13 +111,6 @@ export default function Testimonials() {
           transition={{ duration: 0.5, ease }}
           className="mb-14"
         >
-          <div className="flex items-center gap-4 mb-10">
-            <span className="font-display text-primary-600 text-base">05</span>
-            <span className="text-[11px] tracking-[0.28em] uppercase text-gray-400 whitespace-nowrap">
-              Loved by students
-            </span>
-            <div className="h-px flex-1 bg-dark-600/70" />
-          </div>
           <h2 className="font-display font-bold text-dark-50 tracking-tight text-4xl md:text-5xl">
             Students, on{' '}
             <span className="text-gradient-warm">Acadvo.</span>
@@ -140,6 +133,6 @@ export default function Testimonials() {
           ))}
         </motion.div>
       </div>
-    </section>
+    </div>
   );
 }
