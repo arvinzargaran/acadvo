@@ -56,8 +56,12 @@ entry was accurate when written and wrong within weeks.
   first-party UI. There is no published API programme, no terms granting
   third-party use, and no stability guarantee. Building student-facing advising
   on it means it can break or be cut off without notice.
-- **Correct door:** `https://data.utoronto.ca` (UofT's open-data portal) responds
-  200 — check whether it publishes course/calendar data, or request access.
+- **The "correct door" is closed (checked 2026-08-20).** `https://data.utoronto.ca`
+  allows crawling (`Disallow:` is empty) but publishes **institutional statistics
+  only** — facts and figures, surveys, performance indicators, governance. Its
+  full `page-sitemap.xml` contains no course, calendar or timetable data, and
+  `/apis/` is a 404. There is nothing to ingest there. The remaining honest
+  routes are asking UofT for access to the TTB backend, or the checklist path.
 
 ## York University — DO NOT SCRAPE THE SIS
 
@@ -68,9 +72,18 @@ entry was accurate when written and wrong within weeks.
   institution deliberately put there. Not doing that, and neither should the
   adapter.
 - `https://calendars.students.yorku.ca` (the *public* academic calendar, a
-  different system) is reachable and serves a normal Drupal `robots.txt`. The
-  course URL pattern was not found — `/2025-2026`, `/2025-2026/courses` and
-  `/courses` all 404. Discovery needed.
+  different system) is reachable and serves a stock Drupal `robots.txt` that
+  disallows only `/core/`, `/admin/`, `/user/*` and `/search/` — the calendar
+  itself is permitted. **But there is nothing there to fetch (checked
+  2026-08-20).** The real entry point is `/academic-calendar#/programs`, a
+  hash-routed client-side app: the served HTML contains no course codes, no
+  program data, and no application bundle or API base — `drupalSettings` holds
+  only `path`/`user`. Whatever renders that view is not reachable from the
+  document, so there is no URL an adapter could call.
+- **`atlas.yorku.ca` is not a course system.** It looks like one from the name and
+  is linked off the calendar; it redirects to `atlas.cafe.uit.yorku.ca` and is the
+  **phone and e-mail directory**. Dead end, recorded so nobody follows the same
+  link twice.
 - York currently runs on the hand-entered `app/data/york_cs_catalog.py`
   (22 CS courses, `source="manual"`), which is real data but narrow.
 
@@ -160,16 +173,10 @@ the research path searches, it does not defeat bot protection.
 
 1. **More SFU departments** — the only sanctioned bulk source we have, and it is
    already wired. `--departments` restricts the crawl; ~30s and ~50 courses per
-   department at the default 0.15s throttle. As of 2026-08-20 the seeded set is
-   cmpt, macm plus 24 more (math, stat, phys, chem, bisc, mbb, data, ensc, mse,
-   see, iat, bus, econ, psyc, engl, phil, hist, pol, sa, crim, cmns, hsci, bpk,
-   ling), chosen to cover the largest faculties rather than only CS. The 78
-   available departments are listed by `GET ?{year}/{term}`.
-2. **Checklists, for everywhere else** — one program document at a time, human
-   reviewed. This is the only route for York and TMU.
-3. **UofT** — go through `data.utoronto.ca` or ask for permission before using
-   the TTB backend in production.
-4. **TMU / York SIS** — not by scraping. See above.
+   department at the default 0.15s throttle. **As of 2026-08-20 every
+   undergraduate department is ingested**: 1,853 courses across 77 subjects for
+   2026/fall (the graduate-only `grad` department is skipped). Re-run per term to
+   refresh; `GET ?{year}/{term}` lists what is available.
 
 For any school without a catalog, the app already degrades honestly: advising
 falls back to the student's own uploaded checklist, and `catalog_status.verified`

@@ -85,7 +85,8 @@ def normalize_course_code(raw: str | None) -> str:
     Examples:
         ``"le/eecs 2101 3.00"`` -> ``"LE/EECS 2101"``
         ``"EECS2101"``          -> ``"LE/EECS 2101"``
-        ``"MATH 1300"``         -> ``"SC/MATH 1300"``
+        ``"MATH 1300"``         -> ``"SC/MATH 1300"`` (York-shaped, 4 digits)
+        ``"MATH 100"``          -> ``"MATH 100"``      (3 digits: not York)
         ``"SC/BIOL 1000 3.00"`` -> ``"SC/BIOL 1000"``
         ``"cmpt 225"``          -> ``"CMPT 225"``
         ``"CMPT225"``           -> ``"CMPT 225"``
@@ -98,7 +99,23 @@ def normalize_course_code(raw: str | None) -> str:
         return raw.strip()
     faculty, subject, number = m.group(1), m.group(2).upper(), m.group(3)
     number += m.group(4).upper()  # optional trailing letter, e.g. "105W"
-    faculty = faculty.upper() if faculty else FACULTY_PREFIXES.get(subject)
+    # The York faculty map is only consulted for York-shaped course numbers.
+    #
+    # FACULTY_PREFIXES turns "MATH" into "SC/MATH" — correct at York, and applied
+    # to every university until now. `get_catalog` normalises every catalog row
+    # through here, so SFU's real "MATH 100" was being stored, matched and shown
+    # to Simon Fraser students as "SC/MATH 100": another university's faculty
+    # code stamped on their course.
+    #
+    # York numbers courses with four digits (EECS 1012, MATH 1300); SFU, UofT,
+    # TMU, UBC, McGill and Waterloo all use three. Gating on the width fixes
+    # every three-digit school. It is a heuristic, not a proof: a *four*-digit
+    # school with a colliding subject (Western's MATH 1600, Carleton's MATH 1007)
+    # would still pick up the prefix. Fixing that properly needs the university
+    # threaded through all 29 call sites, which is a bigger change than this one.
+    faculty = faculty.upper() if faculty else (
+        FACULTY_PREFIXES.get(subject) if len(number.rstrip("ABCDEFGHIJKLMNOPQRSTUVWXYZ")) >= 4 else None
+    )
     if faculty:
         return f"{faculty}/{subject} {number}"
     return f"{subject} {number}"
