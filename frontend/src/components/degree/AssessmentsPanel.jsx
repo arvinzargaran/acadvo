@@ -171,7 +171,7 @@ export default function AssessmentsPanel({ course }) {
       {/* Header with actions */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h4 className="text-white font-medium">
+          <h4 className="text-dark-50 font-medium">
             {course.course_code} — Assessments
           </h4>
           <span className="text-dark-400 text-sm">
@@ -181,7 +181,7 @@ export default function AssessmentsPanel({ course }) {
         <div className="flex items-center gap-2">
           <button
             onClick={() => { setShowAdd(!showAdd); setError(''); }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-dark-700 hover:bg-dark-600 text-white text-xs font-medium rounded-lg transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-dark-700 hover:bg-dark-600 text-dark-50 text-xs font-medium rounded-lg transition-all"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -208,14 +208,14 @@ export default function AssessmentsPanel({ course }) {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <p className="text-dark-500 text-[11px] uppercase tracking-wide">Current Standing</p>
-              <p className="text-white text-lg font-semibold">
+              <p className="text-dark-50 text-lg font-semibold">
                 {projection.current_weighted_pct != null ? `${projection.current_weighted_pct}%` : '—'}
               </p>
               <p className="text-dark-500 text-[10px]">on {projection.graded_weight}% graded</p>
             </div>
             <div>
               <p className="text-dark-500 text-[11px] uppercase tracking-wide">Projected Final</p>
-              <p className="text-white text-lg font-semibold">
+              <p className="text-dark-50 text-lg font-semibold">
                 {projection.projected_final_pct != null ? `${projection.projected_final_pct}%` : '—'}
               </p>
               <p className="text-dark-500 text-[10px]">if pace maintained</p>
@@ -238,15 +238,15 @@ export default function AssessmentsPanel({ course }) {
           {/* Target planner */}
           <div className="border-t border-dark-700 pt-3">
             <div className="flex flex-wrap items-center gap-2">
-              <label className="text-dark-400 text-xs">Target final %</label>
-              <input
+              <label htmlFor="assessmentspanel-target-final" className="text-dark-400 text-xs">Target final %</label>
+              <input id="assessmentspanel-target-final"
                 type="number"
                 min="0"
                 max="100"
                 value={target}
                 onChange={handleTargetChange}
                 placeholder="e.g. 85"
-                className="w-20 bg-dark-800 border border-dark-600 rounded-md px-2 py-1 text-white text-sm focus:outline-none focus:border-primary-500"
+                className="w-20 bg-dark-800 border border-dark-600 rounded-md px-2 py-1 text-dark-50 text-sm focus:outline-none focus:border-primary-500"
               />
               {target !== '' && projection.target_final_pct != null && (
                 <span className="text-sm">
@@ -307,7 +307,7 @@ export default function AssessmentsPanel({ course }) {
               value={newAssessment.title}
               onChange={(e) => setNewAssessment({ ...newAssessment, title: e.target.value })}
               placeholder="Title (e.g. Midterm)"
-              className="flex-1 min-w-[140px] bg-dark-900 border border-dark-600 rounded-md px-2 py-1.5 text-white text-sm focus:outline-none focus:border-primary-500"
+              className="flex-1 min-w-[140px] bg-dark-900 border border-dark-600 rounded-md px-2 py-1.5 text-dark-50 text-sm focus:outline-none focus:border-primary-500"
             />
             <input
               type="number"
@@ -316,7 +316,7 @@ export default function AssessmentsPanel({ course }) {
               value={newAssessment.weight}
               onChange={(e) => setNewAssessment({ ...newAssessment, weight: e.target.value })}
               placeholder="Weight %"
-              className="w-24 bg-dark-900 border border-dark-600 rounded-md px-2 py-1.5 text-white text-sm focus:outline-none focus:border-primary-500"
+              className="w-24 bg-dark-900 border border-dark-600 rounded-md px-2 py-1.5 text-dark-50 text-sm focus:outline-none focus:border-primary-500"
             />
             <input
               type="number"
@@ -325,12 +325,12 @@ export default function AssessmentsPanel({ course }) {
               value={newAssessment.score}
               onChange={(e) => setNewAssessment({ ...newAssessment, score: e.target.value })}
               placeholder="Score %"
-              className="w-24 bg-dark-900 border border-dark-600 rounded-md px-2 py-1.5 text-white text-sm focus:outline-none focus:border-primary-500"
+              className="w-24 bg-dark-900 border border-dark-600 rounded-md px-2 py-1.5 text-dark-50 text-sm focus:outline-none focus:border-primary-500"
             />
             <select
               value={newAssessment.category}
               onChange={(e) => setNewAssessment({ ...newAssessment, category: e.target.value })}
-              className="bg-dark-900 border border-dark-600 rounded-md px-2 py-1.5 text-white text-sm focus:outline-none focus:border-primary-500"
+              className="bg-dark-900 border border-dark-600 rounded-md px-2 py-1.5 text-dark-50 text-sm focus:outline-none focus:border-primary-500"
             >
               {categoryOptions.map((c) => (
                 <option key={c} value={c}>{c}</option>
@@ -348,7 +348,7 @@ export default function AssessmentsPanel({ course }) {
             <button
               type="button"
               onClick={() => { setShowAdd(false); setError(''); }}
-              className="px-3 py-1.5 text-dark-400 hover:text-white text-xs transition-colors"
+              className="px-3 py-1.5 text-dark-400 hover:text-dark-50 text-xs transition-colors"
             >
               Cancel
             </button>
@@ -382,7 +382,7 @@ export default function AssessmentsPanel({ course }) {
 
                 {/* Title + notes */}
                 <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-medium truncate">{a.title}</p>
+                  <p className="text-dark-50 text-sm font-medium truncate">{a.title}</p>
                   {a.notes && <p className="text-dark-400 text-xs truncate">{a.notes}</p>}
                 </div>
 
@@ -398,7 +398,7 @@ export default function AssessmentsPanel({ course }) {
                     onBlur={(e) => handleScoreSave(a, e.target.value)}
                     placeholder="—"
                     title="Score earned (%)"
-                    className="w-16 bg-dark-900 border border-dark-600 rounded-md px-2 py-1 text-white text-sm text-right focus:outline-none focus:border-primary-500"
+                    className="w-16 bg-dark-900 border border-dark-600 rounded-md px-2 py-1 text-dark-50 text-sm text-right focus:outline-none focus:border-primary-500"
                   />
                   <span className="text-dark-500 text-xs">%</span>
                 </div>

@@ -4,7 +4,7 @@ import { getSchedule } from '../api/schedule';
 import WeeklyView from '../components/schedule/WeeklyView';
 import MonthlyView from '../components/schedule/MonthlyView';
 import YearlyView from '../components/schedule/YearlyView';
-import { getStyle, toISODate, torontoToday, daysRemainingBadge } from '../components/schedule/styles';
+import { getStyle, toISODate, torontoToday } from '../components/schedule/styles';
 import Skeleton from '../components/ui/Skeleton';
 import PageHeader from '../components/ui/PageHeader';
 import Button from '../components/ui/Button';
@@ -178,7 +178,7 @@ export default function SchedulePage() {
               key={v.key}
               onClick={() => { setViewMode(v.key); setWeekOffset(0); setMonthOffset(0); }}
               className={`relative z-10 px-4 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                viewMode === v.key ? 'text-white' : 'text-dark-400 hover:text-dark-200'
+                viewMode === v.key ? 'text-dark-50' : 'text-dark-400 hover:text-dark-200'
               }`}
             >
               {v.label}

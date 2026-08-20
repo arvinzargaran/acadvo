@@ -22,7 +22,7 @@ export default function CourseEditRow({ course, requirements, credentials = [], 
     setForm(prev => ({ ...prev, [field]: value }));
   };
 
-  const inputClass = 'bg-dark-800 border border-dark-600 rounded-md px-2.5 py-1.5 text-white text-sm w-full min-w-0 focus:outline-none focus:border-primary-500';
+  const inputClass = 'bg-dark-800 border border-dark-600 rounded-md px-2.5 py-1.5 text-dark-50 text-sm w-full min-w-0 focus:outline-none focus:border-primary-500';
 
   return (
     <tr className="border-b border-dark-700/50 bg-dark-700/30 align-top">

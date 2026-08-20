@@ -6,7 +6,7 @@ const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&
 const esc = (value) =>
   String(value ?? '').replace(/[&<>"']/g, (ch) => ESCAPES[ch]);
 
-export default function ExportPDF({ courses, requirements, summary }) {
+export default function ExportPDF({ courses, summary }) {
   const handleExport = () => {
     const grouped = {};
     for (const course of courses) {
@@ -36,12 +36,12 @@ export default function ExportPDF({ courses, requirements, summary }) {
           td { padding: 6px 8px; border: 1px solid #ddd; }
           .status-completed { color: #16a34a; }
           .status-in_progress { color: #C96A00; }
-          .status-planned { color: #8A7C63; }
+          .status-planned { color: #5A6472; }
           .status-not_scheduled { color: #999; }
           .buckets { margin-bottom: 24px; }
           .bucket { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #eee; font-size: 13px; }
           .progress-bar { width: 100px; height: 8px; background: #e5e5e5; border-radius: 4px; display: inline-block; vertical-align: middle; margin-left: 8px; }
-          .progress-fill { height: 100%; background: #FF8A00; border-radius: 4px; }
+          .progress-fill { height: 100%; background: #1B62F0; border-radius: 0; }
           @media print { body { padding: 20px; } }
         </style>
       </head>
@@ -116,7 +116,7 @@ export default function ExportPDF({ courses, requirements, summary }) {
   return (
     <button
       onClick={handleExport}
-      className="flex items-center gap-2 px-3 py-1.5 bg-dark-800 text-dark-300 hover:text-white text-sm font-medium rounded-lg hover:bg-dark-700 transition-all border border-dark-700"
+      className="flex items-center gap-2 px-3 py-1.5 bg-dark-800 text-dark-300 hover:text-dark-50 text-sm font-medium rounded-lg hover:bg-dark-700 transition-all border border-dark-700"
     >
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />

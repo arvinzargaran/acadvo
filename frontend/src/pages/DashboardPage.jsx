@@ -71,13 +71,13 @@ export default function DashboardPage() {
   const handleAccept = async (id) => {
     await updateSuggestion(id, { accepted: true });
     setSuggestions(prev => prev.filter(s => s.id !== id));
-    toast.success('Applied suggestion to your plan!');
+    toast.success('Applied to your plan');
   };
 
   const handleDismiss = async (id) => {
     await updateSuggestion(id, { accepted: false });
     setSuggestions(prev => prev.filter(s => s.id !== id));
-    toast('Suggestion dismissed', { icon: '👋' });
+    toast('Suggestion dismissed');
   };
 
   if (loading) {

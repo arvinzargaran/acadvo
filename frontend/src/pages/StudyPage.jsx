@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Skeleton from '../components/ui/Skeleton';
@@ -17,7 +17,7 @@ export default function StudyPage() {
   const [isBreak, setIsBreak] = useState(false);
   const [customMinutes, setCustomMinutes] = useState(25);
 
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     try {
       const res = await getStudyStats();
       setStats(res.data);
@@ -26,23 +26,13 @@ export default function StudyPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadStats();
   }, []);
 
   useEffect(() => {
-    let interval = null;
-    if (isActive && timeLeft > 0) {
-      interval = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
-    } else if (isActive && timeLeft === 0) {
-      handleTimerEnd();
-    }
-    return () => clearInterval(interval);
-  }, [isActive, timeLeft]);
+    loadStats();
+  }, [loadStats]);
 
-  const handleTimerEnd = async () => {
+  const handleTimerEnd = useCallback(async () => {
     setIsActive(false);
     if (!isBreak) {
       // Log session
@@ -60,7 +50,22 @@ export default function StudyPage() {
       setIsBreak(false);
       setTimeLeft(customMinutes * 60);
     }
-  };
+  }, [isBreak, customMinutes, loadStats]);
+
+  // Declared after handleTimerEnd so the effect can depend on it properly. It
+  // was previously above, calling a function defined later in the body and
+  // omitting it from the dependency array — which works only because this effect
+  // happens to re-run every tick. Any change to when it re-runs would have
+  // silently started firing a stale closure at the end of a session.
+  useEffect(() => {
+    let interval = null;
+    if (isActive && timeLeft > 0) {
+      interval = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
+    } else if (isActive && timeLeft === 0) {
+      handleTimerEnd();
+    }
+    return () => clearInterval(interval);
+  }, [isActive, timeLeft, handleTimerEnd]);
 
   const toggleTimer = () => setIsActive(!isActive);
 

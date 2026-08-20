@@ -19,12 +19,12 @@ export default function Badge({ children, color = 'gray', variant, dot = false }
   const tone = colorMap[color] || colorMap.gray;
   const base =
     variant === 'label'
-      ? 'text-[0.65rem] font-semibold uppercase tracking-wider px-2 py-0.5'
+      ? 'wf-signage text-[0.62rem] px-2 py-0.5'
       : 'text-xs font-medium px-2.5 py-0.5';
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full ring-1 ring-inset ring-black/5 dark:ring-white/10 ${base} ${tone}`}
+      className={`inline-flex items-center gap-1.5 rounded-full border border-dark-600 ${base} ${tone}`}
     >
       {dot && (
         <span className={`h-1.5 w-1.5 rounded-full ${dotMap[color] || dotMap.gray}`} />

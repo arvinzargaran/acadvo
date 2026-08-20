@@ -140,21 +140,11 @@ const ROADMAPS = {
 
 // ─── Local primitives ─────────────────────────────────────────────────────────
 
-function Eyebrow({ n, label }) {
-  return (
-    <div className="flex items-center gap-4 mb-10">
-      <span className="font-display text-primary-600 text-base">{n}</span>
-      <span className="text-[11px] tracking-[0.28em] uppercase text-gray-400 whitespace-nowrap">{label}</span>
-      <div className="h-px flex-1 bg-dark-600/70" />
-    </div>
-  );
-}
-
 /** A segmented row of pill buttons — real <button>s, keyboard accessible. */
 function PillGroup({ legend, options, value, onChange }) {
   return (
     <fieldset className="min-w-0">
-      <legend className="text-[10px] tracking-[0.22em] uppercase text-gray-400 mb-2">{legend}</legend>
+      <legend className="text-[10px] tracking-[0.22em] uppercase text-dark-400 mb-2">{legend}</legend>
       <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={legend}>
         {options.map((opt) => {
           const active = opt.id === value;
@@ -210,27 +200,12 @@ export default function PlanBuilder() {
   const recommendation = `${roadmap.pick.code} — ${roadmap.pick.why} It's ${goalMeta.tail}`;
 
   return (
-    <section className="py-28 md:py-32 px-6">
-      <div className="max-w-6xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-80px' }}
-          transition={{ duration: 0.5, ease }}
-        >
-          <Eyebrow n="01" label="Try it" />
-          <h2 className="text-4xl md:text-5xl font-bold font-display text-dark-50 tracking-tight mb-4">
-            Build your plan in{' '}
-            <span className="font-display text-gradient-warm">seconds.</span>
-          </h2>
-          <p className="text-gray-400 text-lg max-w-2xl mb-12">
-            Pick your school and program — watch a full four-semester roadmap assemble itself,
-            progress and all, the way Acadvo does it on day one.
-          </p>
-        </motion.div>
-
+    // The heading and standfirst live in the page's station sign, so this
+    // component is only the panel.
+    <div>
+      <div>
         {/* ── Product panel ── */}
-        <div className="rounded-2xl border border-dark-600 card-rich shadow-editorial overflow-hidden">
+        <div className="border border-dark-600 card-rich shadow-editorial overflow-hidden">
           {/* Control row */}
           <div className="border-b border-dark-600/70 bg-dark-900/40 p-5 md:p-6">
             <div className="flex flex-col md:flex-row md:items-start gap-6 md:gap-10">
@@ -248,7 +223,7 @@ export default function PlanBuilder() {
                 <span className="mx-1.5 text-dark-500">/</span>
                 <span className="text-dark-200 font-medium">{programMeta.name}</span>
               </div>
-              <span className="text-[10px] tracking-[0.22em] uppercase text-gray-400 hidden sm:block">
+              <span className="text-[10px] tracking-[0.22em] uppercase text-dark-400 hidden sm:block">
                 acadvo — degree planner
               </span>
             </div>
@@ -273,7 +248,7 @@ export default function PlanBuilder() {
                       }`}
                     >
                       <div className="flex items-center justify-between mb-2.5">
-                        <span className={`text-xs font-semibold ${done ? 'text-emerald-600' : 'text-gray-400'}`}>
+                        <span className={`text-xs font-semibold ${done ? 'text-emerald-600' : 'text-dark-400'}`}>
                           {SEM_LABELS[si]}
                         </span>
                         <span
@@ -351,6 +326,6 @@ export default function PlanBuilder() {
           </div>
         </div>
       </div>
-    </section>
+    </div>
   );
 }

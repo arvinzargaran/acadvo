@@ -4,9 +4,28 @@ import io
 import json
 import re
 
-from app.ai.client import acomplete, get_groq_client, run_blocking
+from app.ai.client import acomplete, get_groq_client, run_blocking, completion_text, vision_kwargs, json_kwargs
 from app.config import settings
 from app.services.uploads import pdf_to_text, spreadsheet_to_text
+
+class UnreadableDocumentError(ValueError):
+    """The file carried no text to give the model.
+
+    Distinct from "the model could not make sense of it": a scanned or
+    photographed checklist saved as a PDF has no selectable text at all, so
+    pdfplumber returns an empty string and the extraction runs against nothing.
+    The model then dutifully reports an empty degree, and the student is told
+    their upload succeeded with zero courses found — the least useful possible
+    answer, and one that looks like the app read the document and disagreed with
+    them. This gets its own error so the router can say what is actually wrong
+    and what to do about it.
+    """
+
+
+# Below this many characters there is nothing worth sending. A real checklist
+# runs to thousands; a text layer of a few dozen characters is page furniture
+# (a header, a page number) from a document that is otherwise an image.
+MIN_EXTRACTED_CHARS = 80
 
 SPREADSHEET_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -183,7 +202,7 @@ Extract ALL degree requirements and courses into this exact JSON format:
 
 {
   "requirements": [
-    {"bucket_name": "...", "credits_required": 0.0, "description": "..."}
+    {"bucket_name": "...", "credits_required": 0.0, "description": "...", "options_raw": "..."}
   ],
   "courses": [
     {
@@ -192,7 +211,7 @@ Extract ALL degree requirements and courses into this exact JSON format:
       "credit_value": 0.0,
       "requirement_bucket": "...",
       "term": null,
-      "status": "completed",
+      "status": "not_scheduled",
       "grade": null,
       "prerequisites_raw": "...",
       "alternatives": []
@@ -208,13 +227,30 @@ Rules:
 - Bucket courses by their subject: put MATH/EECS/ITEC courses in the major/math bucket. A "Foundational Science Lab" bucket is ONLY for BIOL/CHEM/PHYS lab science courses — never put MATH there.
 - Match each course to the most appropriate requirement bucket
 - status MUST be one of: "completed", "in_progress", "planned", "not_scheduled"
-- If a course has a grade, mark status as "completed"
+- Completion is a claim about this student's record, so it needs EVIDENCE IN THE
+  DOCUMENT. Mark "completed" ONLY when the row carries a grade, or a tick/"Y"/
+  "Passed"/"Completed" mark in a column that plainly means the course is done.
+- NEVER infer completion from the year a course belongs to, from the student's
+  start or graduation year, or from how far through a program they might be. A
+  blank degree checklist is a list of what is REQUIRED, not a transcript: if its
+  Enrolled/Passed columns are empty, every course is "not_scheduled".
+- A term marker such as "F", "W", "Y", "F or W" or "Any" names WHEN a course is
+  offered. It is never evidence that the course was taken or passed.
 - If a course appears to be currently enrolled, mark status as "in_progress"
-- If no clear status, mark as "planned"
+- If no clear status, mark as "not_scheduled"
 - If no term is visible, set term to null
 - If no grade is visible, set grade to null
 - credit_value should be numeric (e.g. 0.5, 1.0, 3.0)
 - credits_required per bucket should be the total credits needed for that bucket
+- "options_raw" is the VERBATIM text listing which courses satisfy that bucket,
+  copied character-for-character, including any sentence about courses that do
+  NOT count. Example: "Foundational Science Lab Credits (6.00): SC/BIOL 1000
+  3.00, SC/BIOL 1001 3.00, ... The following will not count towards this
+  requirement: SC/BIOL 1500 3.00, ...". Do NOT summarise it and do NOT drop the
+  exclusion sentence — a downstream parser reads the eligible courses out of this
+  string, and a summary like "Foundational Science Lab credits" destroys the only
+  record of which courses actually satisfy the requirement. Use "" when the
+  document names no specific courses (e.g. it links to a web page instead).
 - Return ONLY valid JSON, no markdown fences, no extra text"""
 
 
@@ -374,6 +410,18 @@ def _postprocess(parsed: dict) -> dict:
             course["credit_value"] = 0.0
         raw_status = (course.get("status") or "not_scheduled").strip().lower()
         course["status"] = raw_status if raw_status in _VALID_STATUSES else _STATUS_MAP.get(raw_status, "planned")
+
+        # Completion needs evidence, and a grade is the only evidence that
+        # survives into the parsed record. The prompt forbids inferring it, but
+        # prompts drift and this one already did: a blank York checklist came
+        # back with a whole first year marked "completed" purely because the
+        # student's start year made it plausible. That silently fabricates an
+        # academic record, and every downstream number — GPA, credits, remaining
+        # requirements, graduation date — is then wrong. Downgrading costs the
+        # user a few clicks on the review screen; the alternative costs them a
+        # plan built on courses they never took.
+        if course["status"] == "completed" and not (course.get("grade") or "").strip():
+            course["status"] = "planned"
         # Prerequisites from the notes column.
         notes_raw = course.get("prerequisites_raw") or ""
         course["prerequisites"] = parse_prerequisites_from_notes(notes_raw)
@@ -401,19 +449,32 @@ async def parse_degree_document(file_bytes: bytes, mime_type: str) -> dict:
 
     if mime_type == "application/pdf":
         content_text = await run_blocking(_pdf_to_text, file_bytes)
+        if len(content_text.strip()) < MIN_EXTRACTED_CHARS:
+            raise UnreadableDocumentError(
+                "This PDF has no readable text — it looks like a scan or a photo saved "
+                "as a PDF. Upload it as an image (PNG or JPEG) instead and Acadvo will "
+                "read it with the vision model."
+            )
         response = await acomplete(
             client,
             model=settings.GROQ_MODEL,
             messages=[{"role": "user", "content": f"{EXTRACTION_PROMPT}\n\nDocument content:\n\n{content_text}"}],
             max_tokens=4096,
+            **json_kwargs(),
         )
     elif mime_type in SPREADSHEET_MIME_TYPES:
         spreadsheet_text = await run_blocking(_spreadsheet_to_text, file_bytes, mime_type)
+        if len(spreadsheet_text.strip()) < MIN_EXTRACTED_CHARS:
+            raise UnreadableDocumentError(
+                "This spreadsheet appears to be empty. Check that the checklist is on the "
+                "first sheet and that the file saved correctly."
+            )
         response = await acomplete(
             client,
             model=settings.GROQ_MODEL,
             messages=[{"role": "user", "content": f"{EXTRACTION_PROMPT}\n\nSpreadsheet content:\n\n{spreadsheet_text}"}],
             max_tokens=4096,
+            **json_kwargs(),
         )
     else:
         # Image — use vision model
@@ -429,12 +490,10 @@ async def parse_degree_document(file_bytes: bytes, mime_type: str) -> dict:
                 ],
             }],
             max_tokens=4096,
+            **vision_kwargs(),
         )
 
-    text = response.choices[0].message.content.strip()
-
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    text = completion_text(response)
 
     try:
         parsed = json.loads(text)

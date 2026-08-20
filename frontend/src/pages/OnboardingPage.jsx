@@ -1,4 +1,12 @@
-import { useState, useCallback, useRef } from 'react';
+/* eslint-disable jsx-a11y/no-autofocus --
+ * Every autoFocus in this file is on the single field of a one-question wizard
+ * step, or on the first field of a modal that has just opened. That is the case
+ * the rule exists to permit: focus moves to the only thing on screen the user
+ * came here to do, rather than being stolen from something they were already
+ * using. Reviewed site by site; a new autoFocus elsewhere in the app is still
+ * an error.
+ */
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
@@ -9,9 +17,12 @@ import { createCareerTarget } from '../api/career';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import Button from '../components/ui/Button';
+import Modal from '../components/ui/Modal';
 import { CANADIAN_UNIVERSITIES } from '../data/universities';
 import { PROGRAMS } from '../data/programs';
+import { getScale } from '../data/gradingScales';
 import FileUploadZone from '../components/degree/FileUploadZone';
+import VerifyEmailNotice from '../components/degree/VerifyEmailNotice';
 
 const VALID_STATUSES = new Set(['completed', 'in_progress', 'planned', 'not_scheduled']);
 function normalizeStatus(s) {
@@ -22,13 +33,6 @@ function normalizeStatus(s) {
   if (['enrolled', 'current', 'taking', 'incomplete'].includes(lower)) return 'in_progress';
   return 'planned';
 }
-
-const STATUS_OPTIONS = [
-  { value: 'completed', label: 'Completed' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'planned', label: 'Planned' },
-  { value: 'not_scheduled', label: 'Not Scheduled' },
-];
 
 const PRIORITY_OPTIONS = [
   { value: '1', label: 'High' },
@@ -50,7 +54,7 @@ const springTransition = { type: 'spring', stiffness: 300, damping: 30, mass: 0.
 
 const QUESTIONS = [
   // 0–6: Profile (one at a time)
-  { id: 'name',      section: 'About You',    question: (p) => `What's your name?`,                     field: 'full_name' },
+  { id: 'name',      section: 'About You',    question: () => `What's your name?`,                     field: 'full_name' },
   { id: 'university', section: 'About You',   question: () => `Which university do you attend?`,        field: 'university' },
   { id: 'program',   section: 'About You',    question: () => `What program are you in?`,               field: 'program' },
   { id: 'years',     section: 'About You',    question: () => `When did you start, and when do you graduate?`, field: '_years', multi: true },
@@ -122,9 +126,6 @@ export default function OnboardingPage() {
   }
 
   const updateCourse = updateListItem(setCourses);
-  const addCourse = addListItem(setCourses, {
-    course_code: '', course_name: '', credit_value: '', requirement_bucket: '', term: '', status: 'planned', grade: '',
-  });
   const removeCourse = removeListItem(setCourses);
 
   const updateProject = updateListItem(setProjects);
@@ -176,11 +177,14 @@ export default function OnboardingPage() {
   }
 
   // Handle Enter key for single-field steps
-  function handleKeyDown(e) {
-    if (e.key === 'Enter' && canContinue() && step < TOTAL_STEPS - 1) {
-      e.preventDefault();
-      goNext();
-    }
+  function handleStepSubmit(e) {
+    // Steps that are a single field wrap it in a <form>, so Enter advances the
+    // wizard natively. This used to be an onKeyDown on the wrapping <div>: it
+    // worked for a sighted mouse-and-keyboard user and for nobody else — a div
+    // with a key handler is not an interactive element, and mobile keyboards
+    // showed no "Go" key because there was no form to submit.
+    e.preventDefault();
+    if (canContinue() && step < TOTAL_STEPS - 1) goNext();
   }
 
   // ── Document parsed handler ──────────────────────────────────
@@ -285,7 +289,7 @@ export default function OnboardingPage() {
     switch (q.id) {
       case 'name':
         return (
-          <div className="w-full max-w-md" onKeyDown={handleKeyDown}>
+          <form className="w-full max-w-md" onSubmit={handleStepSubmit}>
             <Input
               value={profile.full_name}
               onChange={up('full_name')}
@@ -293,7 +297,7 @@ export default function OnboardingPage() {
               className="!text-lg !py-3"
               autoFocus
             />
-          </div>
+          </form>
         );
       case 'university':
         return (
@@ -320,7 +324,7 @@ export default function OnboardingPage() {
         );
       case 'years':
         return (
-          <div className="w-full max-w-md flex gap-4" onKeyDown={handleKeyDown}>
+          <form className="w-full max-w-md flex gap-4" onSubmit={handleStepSubmit}>
             <Input
               label="Start Year"
               type="number"
@@ -336,18 +340,18 @@ export default function OnboardingPage() {
               onChange={up('expected_graduation_year')}
               placeholder="e.g. 2027"
             />
-          </div>
+          </form>
         );
       case 'city':
         return (
-          <div className="w-full max-w-md" onKeyDown={handleKeyDown}>
+          <form className="w-full max-w-md" onSubmit={handleStepSubmit}>
             <Input
               value={profile.city}
               onChange={up('city')}
               placeholder="e.g. Toronto"
               autoFocus
             />
-          </div>
+          </form>
         );
       case 'career':
         return (
@@ -365,11 +369,16 @@ export default function OnboardingPage() {
       case 'degree':
         return (
           <div className="w-full max-w-lg">
+            {/* Said "PDF or image" while the dropzone underneath advertised
+                Excel and CSV — the exact formats a degree checklist usually
+                arrives in. Kept in step with FileUploadZone's `accept`. */}
             <p className="text-dark-400 text-sm mb-4 text-center">
-              Upload a degree checklist, academic calendar, or transcript — PDF or image.
+              Upload a degree checklist, academic calendar, or transcript — PDF,
+              image, Excel, or CSV.
               <br />
               <span className="text-dark-500">We'll auto-extract your requirements and courses.</span>
             </p>
+            <VerifyEmailNotice feature="checklist parsing" />
             <FileUploadZone onParsed={handleDocumentParsed} />
             {buckets.length > 0 && (
               <div className="mt-4 bg-green-500/10 border border-green-500/20 rounded-xl p-3 text-center">
@@ -381,7 +390,7 @@ export default function OnboardingPage() {
           </div>
         );
       case 'courses':
-        return <CoursesPanel courses={courses} buckets={buckets} updateCourse={updateCourse} addCourse={addCourse} removeCourse={removeCourse} setCourses={setCourses} />;
+        return <CoursesPanel courses={courses} updateCourse={updateCourse} removeCourse={removeCourse} setCourses={setCourses} />;
       case 'projects':
         return <ProjectsPanel projects={projects} updateProject={updateProject} addProject={addProject} removeProject={removeProject} />;
       case 'targets':
@@ -398,7 +407,7 @@ export default function OnboardingPage() {
       {/* Progress bar */}
       <div className="h-1 bg-dark-800 w-full">
         <motion.div
-          className="h-full bg-gradient-to-r from-primary-500 to-primary-600"
+          className="h-full bg-[var(--wf-live)]"
           animate={{ width: `${progress}%` }}
           transition={{ duration: 0.4, ease: 'easeOut' }}
         />
@@ -502,10 +511,21 @@ export default function OnboardingPage() {
 
 // ── Multi-item panels (scrollable, within the centered layout) ──
 
-const YORK_GRADES = ['A+', 'A', 'B+', 'B', 'C+', 'C', 'D+', 'D', 'E', 'F', 'Pass', 'Fail'];
 const STATUS_CYCLE = ['planned', 'completed', 'in_progress'];
 
-function CoursesPanel({ courses, buckets, updateCourse, addCourse, removeCourse, setCourses }) {
+function CoursesPanel({ courses, updateCourse, removeCourse, setCourses }) {
+  const { user } = useAuth();
+  // The grade buttons below were a hardcoded York letter set — including E,
+  // which most schools do not use — offered to every student during the one
+  // step where they enter their grades. A student elsewhere picked a letter
+  // their own scale has no entry for, and the backend then dropped that course
+  // from their GPA with only a server-side log to show for it. Every other
+  // grade picker in the app already resolves the scale from the profile.
+  const { scale } = useMemo(() => getScale(user?.university), [user?.university]);
+  const gradeOptions = useMemo(
+    () => [...scale.grades.map((g) => g.letter), 'Pass', 'Fail'],
+    [scale]
+  );
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCourse, setNewCourse] = useState({ course_code: '', course_name: '', credit_value: '3.0' });
 
@@ -569,8 +589,12 @@ function CoursesPanel({ courses, buckets, updateCourse, addCourse, removeCourse,
                   </svg>
                 )}
                 <button
+                  type="button"
                   onClick={(e) => { e.stopPropagation(); removeCourse(i); }}
-                  className="opacity-0 group-hover:opacity-100 text-dark-500 hover:text-red-400 transition-all"
+                  aria-label={`Remove ${course.course_code || 'this course'}`}
+                  // Hidden until hover left it unreachable by keyboard; it now
+                  // also appears on focus.
+                  className="opacity-0 transition-all group-hover:opacity-100 focus-visible:opacity-100 text-dark-500 hover:text-red-400"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -578,8 +602,18 @@ function CoursesPanel({ courses, buckets, updateCourse, addCourse, removeCourse,
                 </button>
               </div>
 
-              {/* Clickable area */}
-              <div onClick={() => cycleStatus(i)}>
+              {/* Clickable area. A real button, not a div with onClick: this is
+                  the primary action of the step ("Tap a course to mark it as
+                  completed") and as a bare div it was unreachable by keyboard
+                  entirely — no focus, no Enter, nothing in the a11y tree. */}
+              <button
+                type="button"
+                onClick={() => cycleStatus(i)}
+                aria-label={`${course.course_code || 'Untitled'} — ${
+                  isCompleted ? 'completed' : isInProgress ? 'in progress' : 'not started'
+                }. Activate to change status.`}
+                className="block w-full text-left"
+              >
                 <p className="text-dark-50 font-semibold text-sm pr-8">{course.course_code || 'Untitled'}</p>
                 <p className="text-dark-400 text-xs mt-0.5 truncate">{course.course_name}</p>
                 <div className="flex items-center gap-2 mt-2">
@@ -593,19 +627,24 @@ function CoursesPanel({ courses, buckets, updateCourse, addCourse, removeCourse,
                     {isCompleted ? 'Completed' : isInProgress ? 'In Progress' : 'Not Started'}
                   </span>
                 </div>
-              </div>
+              </button>
 
               {/* Grade selector — only when completed */}
               {isCompleted && (
                 <div className="mt-3 pt-3 border-t border-white/5">
-                  <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide">
-                    {YORK_GRADES.map((g) => (
+                  {/* Wraps rather than scrolling. This was a 468px strip inside
+                      a 209px card with `scrollbar-hide`, so the grades below B
+                      were cut off mid-letter with nothing on screen to suggest
+                      more existed — an invisible scroll in a picker where you
+                      have to see every option to choose one. */}
+                  <div className="flex flex-wrap gap-1.5 pb-0.5">
+                    {gradeOptions.map((g) => (
                       <button
                         key={g}
                         onClick={(e) => { e.stopPropagation(); updateCourse(i, 'grade', g); }}
                         className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
                           course.grade === g
-                            ? 'bg-green-500 text-white shadow-md shadow-green-500/30'
+                            ? 'bg-green-500 text-white'
                             : 'bg-white/5 text-dark-300 hover:bg-white/10 hover:text-dark-50'
                         }`}
                       >
@@ -631,12 +670,17 @@ function CoursesPanel({ courses, buckets, updateCourse, addCourse, removeCourse,
         </button>
       </div>
 
-      {/* Add Course Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAddModal(false)} />
-          <div className="relative bg-dark-800 border border-dark-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-            <h3 className="font-display text-lg text-dark-50 mb-4">Add a Course</h3>
+      {/* Add Course Modal.
+          Was a hand-rolled overlay: a click-to-close backdrop div (unreachable
+          by keyboard), no focus trap, no Escape, no dialog role. The shared
+          Modal already solves all four, and this is the only place in the app
+          that had rebuilt it. */}
+      <Modal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        title="Add a Course"
+      >
+        <div>
             <div className="space-y-3">
               <Input
                 label="Course Code"
@@ -674,9 +718,8 @@ function CoursesPanel({ courses, buckets, updateCourse, addCourse, removeCourse,
                 Add Course
               </button>
             </div>
-          </div>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }

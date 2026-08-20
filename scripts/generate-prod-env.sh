@@ -124,7 +124,9 @@ echo
 echo "Wrote $OUT (mode 600)."
 echo
 echo "Generated for you:  JWT_SECRET_KEY (32 bytes), POSTGRES_PASSWORD (40 chars)"
-echo "Still to consider:  SENTRY_DSN, and off-host database backups."
+echo "Still to consider:  SENTRY_DSN, an uptime monitor on both hostnames,"
+echo "                    and a cron entry for ./scripts/backup-db.sh with the"
+echo "                    dumps copied OFF this host."
 echo
 echo "Deploy with:"
 echo "  cp $OUT .env"

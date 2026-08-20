@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, useSpring, useTransform } from 'framer-motion';
 import Card from '../ui/Card';
 import { getReadiness } from '../../api/users';
+import Modal from '../ui/Modal';
 
 const CATEGORY_META = {
   gpa: { label: 'GPA', icon: 'M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z' },
@@ -18,9 +19,9 @@ function getTierLabel(score) {
 }
 
 function getTierColor(score) {
-  if (score >= 61) return '#2f9e6e';
-  if (score >= 31) return '#d98200';
-  return '#8A7C63';
+  if (score >= 61) return 'var(--wf-line-w)';
+  if (score >= 31) return 'var(--c-signal-amber-500-hex, #E8A020)';
+  return 'var(--wf-muted)';
 }
 
 const TIPS = {
@@ -82,8 +83,8 @@ function GlowRing({ value, size = 160, showText = true }) {
       <svg width={size} height={size} className="-rotate-90">
         <defs>
           <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#FF8A00" />
-            <stop offset="100%" stopColor="#F07E00" />
+            <stop offset="0%" stopColor="var(--wf-live)" />
+            <stop offset="100%" stopColor="var(--wf-live)" />
           </linearGradient>
           <filter id={filterId}>
             <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="rgba(255,138,0,0.45)" />
@@ -110,7 +111,7 @@ function GlowRing({ value, size = 160, showText = true }) {
       {/* Center text */}
       {showText && (
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className={`${numSize} font-display font-semibold text-white tabular-nums leading-none`}>
+          <span className={`${numSize} font-display font-semibold text-dark-50 tabular-nums leading-none`}>
             {display}
             <span className={`${pctSize} font-normal text-dark-400`}>%</span>
           </span>
@@ -143,9 +144,16 @@ export default function ReadinessScore({ bento = false }) {
   if (bento) {
     return (
       <>
-        <motion.div
+        {/* A button, not a div. This is the dashboard's primary widget and its
+            only job is to open the breakdown dialog, so it has to be reachable
+            by keyboard. jsx-a11y cannot see this one — the rule inspects DOM
+            element names and this is a motion component — so it went unreported
+            while the visually identical compact card below was flagged. */}
+        <motion.button
+          type="button"
           onClick={() => setShowModal(true)}
-          className="h-full flex flex-col cursor-pointer"
+          aria-haspopup="dialog"
+          className="h-full w-full text-left flex flex-col cursor-pointer"
           animate={{ scale: [1, 1.01, 1] }}
           transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
         >
@@ -196,7 +204,7 @@ export default function ReadinessScore({ bento = false }) {
               )}
             </div>
           </div>
-        </motion.div>
+        </motion.button>
 
         {showModal && createPortal(
           <BreakdownModal data={data} tierLabel={tierLabel} tierColor={tierColor} onClose={() => setShowModal(false)} />,
@@ -211,7 +219,12 @@ export default function ReadinessScore({ bento = false }) {
   return (
     <>
       <Card gradient className="cursor-pointer" hover>
-        <div onClick={() => setShowModal(true)}>
+        <button
+          type="button"
+          onClick={() => setShowModal(true)}
+          aria-haspopup="dialog"
+          className="w-full text-left"
+        >
           <p className="text-dark-400 text-sm mb-3">Co-op Readiness</p>
           <div className="flex items-center gap-4">
             <GlowRing value={data.total} size={80} />
@@ -232,7 +245,7 @@ export default function ReadinessScore({ bento = false }) {
               </div>
             </div>
           </div>
-        </div>
+        </button>
       </Card>
 
       {showModal && <BreakdownModal data={data} tierLabel={tierLabel} tierColor={tierColor} onClose={() => setShowModal(false)} />}
@@ -244,26 +257,15 @@ export default function ReadinessScore({ bento = false }) {
 
 function BreakdownModal({ data, tierLabel, tierColor, onClose }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-dark-800 border border-dark-700 rounded-2xl shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="relative p-6 pb-4">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-primary-500" />
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold text-white">Readiness Breakdown</h3>
-            <button onClick={onClose} className="text-dark-400 hover:text-white transition">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          <div className="flex items-center gap-4 mt-3">
-            <GlowRing value={data.total} size={72} showText={false} />
-            <div>
-              <p className="text-3xl font-bold text-white">{data.total}%</p>
-              <p className="text-sm font-semibold" style={{ color: tierColor }}>{tierLabel}</p>
-            </div>
+    <Modal isOpen onClose={onClose} title="Readiness Breakdown" widthClass="max-w-md">
+      <div className="overflow-hidden">
+        {/* Summary. The dialog's own title row and close button come from Modal;
+            only the score itself is content, so only the score is repeated. */}
+        <div className="flex items-center gap-4 mb-2">
+          <GlowRing value={data.total} size={72} showText={false} />
+          <div>
+            <p className="text-3xl font-bold text-dark-50">{data.total}%</p>
+            <p className="text-sm font-semibold" style={{ color: tierColor }}>{tierLabel}</p>
           </div>
         </div>
 
@@ -282,7 +284,7 @@ function BreakdownModal({ data, tierLabel, tierColor, onClose }) {
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
-                      <span className="text-white text-sm font-medium">{meta?.label || key}</span>
+                      <span className="text-dark-50 text-sm font-medium">{meta?.label || key}</span>
                       <span className="text-sm font-semibold" style={{ color: tierColor }}>
                         {cat.score}/{cat.max}
                       </span>
@@ -303,6 +305,6 @@ function BreakdownModal({ data, tierLabel, tierColor, onClose }) {
           })}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

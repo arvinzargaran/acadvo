@@ -11,13 +11,27 @@ export default function AppShell() {
 
   return (
     <div className="min-h-screen">
-      {/* Mobile overlay */}
+      {/* Mobile overlay — decorative dismiss layer, hidden from assistive tech:
+          the sidebar carries its own labelled close button, and exposing this
+          would put an unlabelled full-screen tab stop in front of it. */}
       {sidebarOpen && (
         <div
+          aria-hidden="true"
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
+
+      {/* Skip link — the first thing a keyboard user reaches.
+          The sidebar is ~15 links, and it renders before <main> in the DOM, so
+          without this every page change costs fifteen tabs before reaching any
+          content. Visually hidden until focused. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-[60] focus:top-3 focus:left-3 focus:bg-primary-600 focus:text-white focus:px-4 focus:py-2 focus:text-sm focus:font-medium"
+      >
+        Skip to main content
+      </a>
 
       {/* Sidebar: hidden on mobile by default, shown via sidebarOpen */}
       <div className={`
@@ -31,7 +45,7 @@ export default function AppShell() {
       <div className="lg:ml-64 flex flex-col min-h-screen">
         <Topbar onMenuToggle={() => setSidebarOpen(true)} />
         <VerifyEmailBanner />
-        <main className="flex-1 p-5 sm:p-8 lg:p-12">
+        <main id="main-content" tabIndex={-1} className="flex-1 p-5 sm:p-8 lg:p-12">
           <Outlet />
         </main>
       </div>

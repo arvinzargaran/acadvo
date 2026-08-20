@@ -6,13 +6,13 @@ import Badge from '../ui/Badge';
 // Semantic GPA tiers — same 0.75 / 0.50 thresholds as GPACalculator/GPATracker.
 function tier(value, max) {
   const pct = max > 0 ? value / max : 0;
-  if (pct >= 0.75) return { name: 'green', color: '#22c55e' };
-  if (pct >= 0.5) return { name: 'yellow', color: '#eab308' };
-  return { name: 'red', color: '#ef4444' };
+  if (pct >= 0.75) return { name: 'green', color: '#00875A' };
+  if (pct >= 0.5) return { name: 'yellow', color: '#E8A020' };
+  return { name: 'red', color: '#D92B1F' };
 }
 
-const PRIMARY = '#FFA22E'; // primary-400
-const GATE_COLOR = '#eab308'; // yellow-500
+const PRIMARY = 'var(--wf-live)';
+const GATE_COLOR = '#E8A020'; // amber signal
 
 // ── Inline-SVG term-over-term trend chart ────────────────────────────
 function TrendChart({ termGpas, scaleMax, cumulativeGpa, gate }) {
@@ -267,8 +267,8 @@ export default function GPATrendGoal() {
             />
           </div>
           <div>
-            <label className="block text-dark-400 text-xs mb-1.5">Credits remaining until graduation</label>
-            <input
+            <label htmlFor="gpatrendgoal-credits-remaining-until-graduation" className="block text-dark-400 text-xs mb-1.5">Credits remaining until graduation</label>
+            <input id="gpatrendgoal-credits-remaining-until-graduation"
               type="number" step="0.5" min="0"
               value={remaining}
               onChange={(e) => setRemaining(e.target.value)}

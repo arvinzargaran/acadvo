@@ -1,5 +1,6 @@
 import Card from '../ui/Card';
 import Badge from '../ui/Badge';
+import { targetStatusLabel } from '../../utils/labels';
 
 const statusColors = {
   researching: 'blue',
@@ -26,7 +27,7 @@ export default function TargetCard({ target, onEdit, onDelete }) {
         </div>
       </div>
       <div className="flex items-center gap-3">
-        <Badge color={statusColors[target.status]} dot>{target.status}</Badge>
+        <Badge color={statusColors[target.status]} dot>{targetStatusLabel(target.status)}</Badge>
         <button onClick={() => onEdit(target)} className="text-primary-500 hover:text-primary-400 text-sm">Edit</button>
         <button onClick={() => onDelete(target.id)} className="text-red-400 hover:text-red-300 text-sm">Delete</button>
       </div>

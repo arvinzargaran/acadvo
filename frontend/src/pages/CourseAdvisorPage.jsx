@@ -15,7 +15,10 @@ import {
   streamSemesterPlan,
   applySemesterPlan,
 } from '../api/courseAdvisor';
+import BucketVerdict from '../components/degree/BucketVerdict';
+import ProgramRulesPanel from '../components/degree/ProgramRulesPanel';
 import { createCourse } from '../api/degree';
+import { getErrorMessage } from '../utils/errors';
 import toast from 'react-hot-toast';
 
 const PRIORITY_COLORS = {
@@ -52,9 +55,11 @@ export default function CourseAdvisorPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState(null);
   const [selectedSemester, setSelectedSemester] = useState('');
   const [recommendations, setRecommendations] = useState([]);
   const [generating, setGenerating] = useState(false);
+  const [recError, setRecError] = useState(null);
   const [loadingRecs, setLoadingRecs] = useState(true);
   const [fullPlan, setFullPlan] = useState(null);
   const [generatingPlan, setGeneratingPlan] = useState(false);
@@ -72,6 +77,9 @@ export default function CourseAdvisorPage() {
     if (!selectedSemester && semesters.length) {
       setSelectedSemester(semesters[0]);
     }
+    // Seeds the default once per semester list. selectedSemester is the guard,
+    // not a trigger — depending on it would fight the student's own choice.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [semesters]);
 
   useEffect(() => {
@@ -91,11 +99,19 @@ export default function CourseAdvisorPage() {
     e.preventDefault();
     if (!searchQuery.trim()) return;
     setSearching(true);
+    setSearchError(null);
     try {
       const { data } = await searchCourses(searchQuery);
       setSearchResults(data.results);
-    } catch {
-      setSearchResults([]);
+    } catch (err) {
+      // Not `setSearchResults([])`. Course search is an AI call, so it fails for
+      // reasons the student can act on — the service is unconfigured, the
+      // account is over its token limit, their university has no catalog — and
+      // every one of those used to render as "No courses found for X", which
+      // says the search worked and their course does not exist. Same mistake the
+      // recommendations panel above already had fixed.
+      setSearchResults(null);
+      setSearchError(getErrorMessage(err, 'Course search is unavailable right now. Please try again.'));
     } finally {
       setSearching(false);
     }
@@ -104,9 +120,18 @@ export default function CourseAdvisorPage() {
   async function handleGenerate() {
     if (!selectedSemester) return;
     setGenerating(true);
+    setRecError(null);
     try {
       const { data } = await generateRecommendations(selectedSemester);
       setRecommendations((prev) => [...data, ...prev]);
+    } catch (err) {
+      // This had try/finally and no catch, so a rejected request left the panel
+      // looking exactly like a successful run that found nothing. The 409 case
+      // (no verified catalog for the student's university) is precisely the one
+      // a student must be told about rather than left to infer.
+      setRecError(
+        getErrorMessage(err, 'Could not generate recommendations. Please try again.')
+      );
     } finally {
       setGenerating(false);
     }
@@ -177,8 +202,8 @@ export default function CourseAdvisorPage() {
     try {
       await applySemesterPlan(fullPlan.semesters);
       setFullPlan(null);
-    } catch {
-      setPlanError('Failed to apply plan.');
+    } catch (err) {
+      setPlanError(getErrorMessage(err, 'Failed to apply plan.'));
     } finally {
       setApplyingPlan(false);
     }
@@ -286,7 +311,7 @@ export default function CourseAdvisorPage() {
           <div className="flex flex-col items-center py-12 gap-4">
             <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary-400/30 border-t-primary-400" />
             <div className="text-center">
-              <p className="text-white font-medium">Building your semester plan...</p>
+              <p className="text-dark-50 font-medium">Building your semester plan...</p>
               <p className="text-dark-300 text-sm mt-1">Searching {universityName}'s course catalog, analyzing prerequisites, and optimizing for your goals.</p>
             </div>
           </div>
@@ -315,7 +340,7 @@ export default function CourseAdvisorPage() {
                 return (
                   <div key={i} className="bg-dark-800 border border-dark-700 rounded-xl overflow-hidden">
                     <div className="px-3 py-2 border-b border-dark-700 flex items-center justify-between">
-                      <span className="text-white font-semibold text-sm">{sem.term}</span>
+                      <span className="text-dark-50 font-semibold text-sm">{sem.term}</span>
                       <div className="flex items-center gap-2">
                         <span className="text-dark-400 text-xs">{credits} cr</span>
                         {newCount > 0 && <span className="text-primary-400 text-[10px]">+{newCount} new</span>}
@@ -383,7 +408,8 @@ export default function CourseAdvisorPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={`Search ${universityName} courses by name, code, or topic...`}
-            className="flex-1 bg-dark-800 border border-dark-600 text-white rounded-lg px-4 py-2.5 text-sm placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
+            aria-label={`Search ${universityName} courses`}
+            className="flex-1 bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-4 py-2.5 text-sm placeholder-dark-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors"
           />
           <Button type="submit" loading={searching}>Search</Button>
         </form>
@@ -403,6 +429,15 @@ export default function CourseAdvisorPage() {
           </div>
         )}
 
+        {!searching && searchError && (
+          <div
+            role="alert"
+            className="mt-4 border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-200"
+          >
+            {searchError}
+          </div>
+        )}
+
         {!searching && searchResults !== null && (
           <div className="mt-4 space-y-3">
             {searchResults.length === 0 ? (
@@ -413,7 +448,7 @@ export default function CourseAdvisorPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-white font-medium text-sm">{course.course_code}</span>
+                        <span className="text-dark-50 font-medium text-sm">{course.course_code}</span>
                         <span className="text-dark-300 text-sm">— {course.course_name}</span>
                         <span className="text-dark-500 text-xs">{course.credits} credits</span>
                         {course.in_plan && (
@@ -426,6 +461,10 @@ export default function CourseAdvisorPage() {
                       {course.requirement_bucket && (
                         <p className="text-dark-500 text-xs mt-1">Satisfies: {course.requirement_bucket}</p>
                       )}
+                      {course.blocked_reason && (
+                        <p className="text-amber-400/90 text-xs mt-1">{course.blocked_reason}</p>
+                      )}
+                      <BucketVerdict verdict={course.bucket_verdict} />
                     </div>
                     <div className="flex gap-2 shrink-0">
                       {!course.in_plan && (
@@ -445,8 +484,8 @@ export default function CourseAdvisorPage() {
                                 prev.map(c => c.course_code === course.course_code ? { ...c, in_plan: true } : c)
                               );
                               toast.success(`${course.course_code} added to your plan`);
-                            } catch {
-                              toast.error('Failed to add course');
+                            } catch (err) {
+                              toast.error(getErrorMessage(err, 'Failed to add course'));
                             } finally {
                               setAddingCourse(null);
                             }
@@ -458,7 +497,7 @@ export default function CourseAdvisorPage() {
                       )}
                       <button
                         onClick={() => window.dispatchEvent(new CustomEvent('open-chat-widget', { detail: { message: `Tell me about ${course.course_code} and whether I should take it given my goals.` } }))}
-                        className="text-xs text-dark-400 hover:text-white transition-colors whitespace-nowrap"
+                        className="text-xs text-dark-400 hover:text-dark-50 transition-colors whitespace-nowrap"
                       >
                         Ask advisor
                       </button>
@@ -481,11 +520,18 @@ export default function CourseAdvisorPage() {
             </p>
           </div>
         </div>
+        {/* What Acadvo knows about this program's requirements, and how. Placed
+            above the generate button so the basis for "satisfies X" is visible
+            before any recommendation makes that claim. */}
+        <div className="mb-4">
+          <ProgramRulesPanel />
+        </div>
         <div className="flex items-center gap-3">
           <select
             value={selectedSemester}
+            aria-label="Semester to plan for"
             onChange={(e) => setSelectedSemester(e.target.value)}
-            className="bg-dark-800 border border-dark-600 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
           >
             {semesters.map((s) => (
               <option key={s} value={s}>{s}</option>
@@ -495,6 +541,15 @@ export default function CourseAdvisorPage() {
             Recommend courses for {selectedSemester}
           </Button>
         </div>
+
+        {recError && (
+          <div
+            role="alert"
+            className="mt-5 border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-200"
+          >
+            {recError}
+          </div>
+        )}
 
         {/* Show recommendations for selected semester */}
         {generating ? (
@@ -594,9 +649,14 @@ function RecommendationCard({ rec, onAccept, onDismiss, compact = false }) {
             {rec.requirement_bucket && (
               <Badge color="gray" variant="label">{rec.requirement_bucket}</Badge>
             )}
+            {compact && <BucketVerdict verdict={rec.bucket_verdict} compact />}
           </div>
           {!compact && (
             <>
+              {/* The degree-credit claim, with its basis and citation. Sits
+                  directly under the bucket badge so the badge is never read
+                  alone — see BucketVerdict for why that matters. */}
+              <BucketVerdict verdict={rec.bucket_verdict} />
               {rec.reasoning && (
                 <p className="text-dark-300 text-sm mt-2">{rec.reasoning}</p>
               )}

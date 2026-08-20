@@ -9,6 +9,7 @@ from app.models.course_recommendation import CourseRecommendation
 from app.models.dsa import DSAProblem, DSASettings
 from app.models.study import StudySession
 from app.models.catalog import CatalogCourse
+from app.models.requirement_rule import ProgramResearchJob, RequirementRule
 
 __all__ = [
     "User",
@@ -30,4 +31,6 @@ __all__ = [
     "DSASettings",
     "StudySession",
     "CatalogCourse",
+    "RequirementRule",
+    "ProgramResearchJob",
 ]

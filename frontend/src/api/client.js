@@ -13,6 +13,22 @@ const client = axios.create({
   headers: { [CSRF_HEADER]: 'XMLHttpRequest' },
 });
 
+// Routes that require a session — kept in step with the protected routes in
+// src/App.jsx. Anything not listed here (public pages, unknown paths) is left
+// alone when a token refresh fails.
+const AUTHENTICATED_PATHS = new Set([
+  '/onboarding',
+  '/dashboard',
+  '/degree',
+  '/schedule',
+  '/courses',
+  '/projects',
+  '/career',
+  '/dsa',
+  '/study',
+  '/settings',
+]);
+
 let isRefreshing = false;
 let failedQueue = [];
 
@@ -58,8 +74,19 @@ client.interceptors.response.use(
         return client(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError);
-        const publicPaths = ['/', '/login', '/register'];
-        if (!publicPaths.includes(window.location.pathname)) {
+        // Bounce to login only from a page that actually needs a session.
+        //
+        // This used to be the inverse — a three-entry public allowlist ('/',
+        // '/login', '/register') and a redirect for everything else — which
+        // caught every public page nobody remembered to add. The worst case was
+        // real: a user opening the password-reset link from their email while
+        // holding a stale refresh cookie got the background /users/me probe,
+        // its failed refresh, and a hard redirect to /login, so the reset link
+        // simply never worked for the people most likely to click it. Same for
+        // /verify-email. Listing the authenticated routes instead means a new
+        // public page is safe by default, and an unknown path keeps rendering
+        // the 404 page rather than being disguised as a session timeout.
+        if (AUTHENTICATED_PATHS.has(window.location.pathname)) {
           window.location.href = '/login';
         }
         return Promise.reject(refreshError);

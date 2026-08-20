@@ -25,13 +25,23 @@ export default function ApplicationPipeline({ targets, onEdit, onStatusChange })
             <span className="font-display tabular-nums text-sm text-dark-400">{grouped[col.key].length}</span>
           </div>
           <div className="px-2 pb-2 space-y-2">
+            {/* The whole card cannot be one button: it contains the quick
+                status-advance buttons below, and nesting interactive controls is
+                invalid HTML and unusable with a keyboard. The card's own action
+                lives on its title instead — the standard shape for a card with
+                both a primary action and secondary ones. */}
             {grouped[col.key].map(target => (
               <div
                 key={target.id}
-                onClick={() => onEdit(target)}
-                className="bg-dark-700/70 hover:bg-dark-700 border border-dark-600 rounded-lg p-3 cursor-pointer transition-colors"
+                className="bg-dark-700/70 hover:bg-dark-700 border border-dark-600 rounded-lg p-3 transition-colors"
               >
-                <p className="text-dark-50 text-sm font-medium">{target.company_name}</p>
+                <button
+                  type="button"
+                  onClick={() => onEdit(target)}
+                  className="text-dark-50 text-sm font-medium text-left hover:underline"
+                >
+                  {target.company_name}
+                </button>
                 {target.role_type && (
                   <p className="text-dark-400 text-xs mt-0.5">{target.role_type}</p>
                 )}

@@ -13,10 +13,10 @@ export default function CurrentCourses({ courses, bento = false }) {
 
   const content = (
     <>
-      <h3 className="text-white font-semibold mb-3">Current Courses</h3>
+      <h3 className="text-dark-50 font-semibold mb-3">Current Courses</h3>
       {current.length === 0 ? (
         <div className="py-2">
-          <p className="font-display text-lg text-white">Nothing in progress</p>
+          <p className="font-display text-lg text-dark-50">Nothing in progress</p>
           <p className="text-dark-400 text-sm mt-0.5">Courses you mark as in-progress will show up here.</p>
         </div>
       ) : (
@@ -24,7 +24,7 @@ export default function CurrentCourses({ courses, bento = false }) {
           {current.map(c => (
             <div key={c.id} className={`flex items-center justify-between rounded-lg px-3 py-2 ${bento ? 'bg-white/5 border border-white/5' : 'bg-dark-700/50'}`}>
               <div>
-                <span className="text-white text-sm font-medium">{c.course_code}</span>
+                <span className="text-dark-50 text-sm font-medium">{c.course_code}</span>
                 <span className="text-dark-400 text-sm ml-2">{c.course_name}</span>
               </div>
               <div className="flex items-center gap-2">

@@ -23,8 +23,10 @@ export default function Avatar({ name, size = 'md', className = '' }) {
   return (
     <span
       aria-hidden="true"
+      // Initials sit in a roundel, the same object the line bullets use — flat
+      // tint, ruled edge, letterform doing the work.
       className={`inline-flex shrink-0 items-center justify-center rounded-full font-semibold tracking-tight text-primary-700 dark:text-primary-300 select-none
-        bg-gradient-to-br from-primary-500/25 to-primary-500/5 ring-1 ring-inset ring-primary-500/25
+        bg-primary-500/15 ring-1 ring-inset ring-primary-500/30
         ${sizeMap[size] || sizeMap.md} ${className}`}
     >
       {initials(name)}

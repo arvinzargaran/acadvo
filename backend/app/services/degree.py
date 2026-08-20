@@ -426,23 +426,57 @@ async def calculate_gpa(user_id: uuid.UUID, db: AsyncSession) -> dict:
     }
 
 
+class NoMajorGateError(RuntimeError):
+    """This student's program defines no major/subject GPA gate.
+
+    Not every program has one — York gates upper-year EECS behind a 4.50 EECS
+    GPA, most schools gate nothing. These functions used to default to exactly
+    York's rule (``faculty_prefix="EECS", gate=4.50``), so a student anywhere
+    else asking "what do I need to average?" got a confident answer computed
+    from another university's threshold against a subject prefix their
+    transcript does not contain. Refusing is the only correct answer; the gates
+    that do exist live in ``app/data/program_config.py``.
+    """
+
+    def __init__(self, university: str | None):
+        self.university = university
+        super().__init__(
+            f"{university or 'Your university'} has no major-GPA gate on record, so there "
+            "is no gate to project toward. Cumulative GPA goals still work."
+        )
+
+
 async def calculate_major_gpa(
     user_id: uuid.UUID,
     db: AsyncSession,
-    faculty_prefix: str = "EECS",
-    gate: float = 4.50,
+    faculty_prefix: str | None = None,
+    gate: float | None = None,
 ) -> dict:
     """Calculate the major/subject-subset GPA over completed graded courses whose
     course_code contains the given faculty prefix (case-insensitive; handles both
     'LE/EECS 2030' and 'EECS 2030'), using the SAME university-specific grading
-    scale as calculate_gpa. Returns scope, gpa, credits and whether it meets the
-    program gate (e.g. York's 4.50 EECS-major GPA gate)."""
+    scale as calculate_gpa.
+
+    ``faculty_prefix``/``gate`` default to the student's *own* program gate from
+    ``app/data/program_config.py``. Passing them explicitly overrides that (the
+    API exposes both so a student can explore a scope the config does not know
+    about yet). Raises ``NoMajorGateError`` when neither is available.
+    """
     # 1. Fetch user's university and resolve the grading scale
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     university = user.university if user else None
     scale, _ = get_scale(university)
     grade_map = build_grade_map(scale)
+
+    # 2. Resolve the gate for THIS student's program, not York's.
+    if faculty_prefix is None or gate is None:
+        gates = get_major_gpa_gates(university)
+        if not gates:
+            raise NoMajorGateError(university)
+        configured = gates[0]
+        faculty_prefix = faculty_prefix if faculty_prefix is not None else configured["scope"]
+        gate = gate if gate is not None else float(configured["min"])
 
     # 2. Fetch completed courses
     courses_result = await db.execute(
@@ -528,8 +562,8 @@ async def project_major_gpa_goal(
     user_id: uuid.UUID,
     db: AsyncSession,
     remaining_credits: float,
-    faculty_prefix: str = "EECS",
-    gate: float = 4.50,
+    faculty_prefix: str | None = None,
+    gate: float | None = None,
 ) -> dict:
     """Reverse-project the average GPA needed on the next ``remaining_credits`` of
     subject-subset (major) courses to clear a program gate (e.g. York's 4.50
@@ -546,6 +580,10 @@ async def project_major_gpa_goal(
         )
 
     major = await calculate_major_gpa(user_id, db, faculty_prefix=faculty_prefix, gate=gate)
+    # Read the gate back off the result rather than the argument: the argument is
+    # None whenever the caller wanted the student's configured gate, and the
+    # projection maths below divides by it.
+    gate = major["gate"]
     # calculate_major_gpa uses the same scale; pull scale_max from the cumulative calc.
     gpa_data = await calculate_gpa(user_id, db)
     scale_max = gpa_data["scale_max"]
@@ -741,7 +779,7 @@ async def parse_and_save_syllabus(
     import json
     from datetime import datetime as dt, timezone
 
-    from app.ai.client import acomplete, get_groq_client, run_blocking
+    from app.ai.client import acomplete, get_groq_client, run_blocking, completion_text, vision_kwargs, json_kwargs
     from app.config import settings
     from app.models.career import TimelineEvent, TimelineCategory
     from app.services.document_parser import (
@@ -772,6 +810,7 @@ async def parse_and_save_syllabus(
             model=settings.GROQ_MODEL,
             messages=[{"role": "user", "content": f"{prompt}\n\nDocument content:\n\n{content_text}"}],
             max_tokens=4096,
+            **json_kwargs(),
         )
     elif mime_type in SPREADSHEET_MIME_TYPES:
         content_text = await run_blocking(_spreadsheet_to_text, file_bytes, mime_type)
@@ -780,6 +819,7 @@ async def parse_and_save_syllabus(
             model=settings.GROQ_MODEL,
             messages=[{"role": "user", "content": f"{prompt}\n\nDocument content:\n\n{content_text}"}],
             max_tokens=4096,
+            **json_kwargs(),
         )
     else:
         b64 = base64.b64encode(file_bytes).decode()
@@ -794,11 +834,10 @@ async def parse_and_save_syllabus(
                 ],
             }],
             max_tokens=4096,
+            **vision_kwargs(),
         )
 
-    text = response.choices[0].message.content.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    text = completion_text(response)
 
     parsed = json.loads(text)
     if isinstance(parsed, dict) and "assessments" in parsed:

@@ -24,8 +24,8 @@ export default function ProjectsPage() {
     try {
       const res = await listProjects();
       setProjects(res.data);
-    } catch {
-      setError('Failed to load projects.');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load projects.'));
     } finally {
       setLoading(false);
     }
@@ -80,8 +80,8 @@ export default function ProjectsPage() {
     try {
       await deleteProject(id);
       loadProjects();
-    } catch {
-      setError('Failed to delete project.');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to delete project.'));
     }
   };
 
@@ -89,8 +89,8 @@ export default function ProjectsPage() {
     try {
       await updateMilestone(milestoneId, data);
       loadProjects();
-    } catch {
-      setError('Failed to update milestone.');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to update milestone.'));
     }
   };
 
@@ -179,8 +179,8 @@ export default function ProjectsPage() {
           <Input label="Description" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-dark-300 mb-1">Priority</label>
-              <select
+              <label htmlFor="projectspage-priority" className="block text-sm text-dark-300 mb-1">Priority</label>
+              <select id="projectspage-priority"
                 value={form.priority}
                 onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
                 className="w-full bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-3 py-2"
@@ -194,8 +194,8 @@ export default function ProjectsPage() {
           </div>
           <Input label="Tech Stack (comma-separated)" value={form.tech_stack} onChange={e => setForm(f => ({ ...f, tech_stack: e.target.value }))} />
           <div>
-            <label className="block text-sm text-dark-300 mb-1">Product Framing</label>
-            <textarea
+            <label htmlFor="projectspage-product-framing" className="block text-sm text-dark-300 mb-1">Product Framing</label>
+            <textarea id="projectspage-product-framing"
               value={form.product_framing}
               onChange={e => setForm(f => ({ ...f, product_framing: e.target.value }))}
               className="w-full bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-3 py-2 h-20 resize-none"

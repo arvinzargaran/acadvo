@@ -14,21 +14,32 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.client import acomplete, aiter_stream, get_groq_client
+from app.ai.client import (
+    json_kwargs,
+    acomplete,
+    aiter_stream,
+    budget_max_tokens,
+    clean_model_text,
+    completion_text,
+    get_groq_client,
+)
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 from app.models.career import CareerTarget
 from app.models.degree import Course, CourseStatus, DegreeRequirement
 from app.models.user import User
-from app.services.catalog import get_catalog
+from app.services.catalog import get_catalog, require_university
 from app.services.degree import get_degree_summary
 from app.services.document_parser import normalize_course_code
 from app.services.eligibility import (
     evaluate_entry,
     expand_equivalents,
+    allowed_courses_budget_chars,
     format_allowed_courses,
     gpa_by_scope_for_catalog,
+    shortlist_for_student,
+    undergraduate_only,
     missing_prerequisite_group,
 )
 
@@ -141,7 +152,7 @@ async def _gather_context(
 
     # Ground the plan in the real catalog and precompute the student's major GPA
     # for every gate scope (used to keep gated courses blocked in _sanitize_plan).
-    university = user.university or "York University"
+    university = require_university(user)
     catalog = await get_catalog(university, db, user_id)
     gpa_by_scope = await gpa_by_scope_for_catalog(catalog, user_id, db)
     # Equivalence-expanded so a completed course also counts as its alternatives
@@ -227,7 +238,24 @@ def _build_prompt(ctx: dict) -> str:
     # Allowed course list from the real catalog, excluding courses already taken /
     # in progress / planned so the model only proposes NEW, real courses.
     exclude_norm = {normalize_course_code(c) for c in all_existing_codes}
-    allowed_str = format_allowed_courses(ctx.get("catalog", {}), exclude=exclude_norm)
+    # Shortlisted rather than the whole catalog: a real catalog renders to tens
+    # of thousands of tokens and the plan prompt already carries the student's
+    # transcript and requirements. Biased toward the subjects their own courses
+    # are in, since that is what a degree is mostly made of.
+    allowed_str = format_allowed_courses(
+        shortlist_for_student(
+            # Graduate courses are dropped outright: a real ingested catalog is
+            # the whole calendar, and a first-year term of 800-level seminars is
+            # not a plan.
+            undergraduate_only(ctx.get("catalog", {})),
+            _subjects_from_context(ctx),
+            program=getattr(ctx.get("user"), "program", None),
+            exclude=exclude_norm,
+        ),
+        ordered=True,
+        # A plan is a long completion; leave it room inside the same ceiling.
+        max_chars=allowed_courses_budget_chars(share=0.2),
+    )
 
     return f"""You are an expert academic advisor at {user.university or 'a Canadian university'}.
 Your job is to create a semester-by-semester course plan for FUTURE semesters only.
@@ -553,6 +581,35 @@ def _stream_prepare_semester(
     return bool(kept)
 
 
+def _subjects_from_context(ctx: dict) -> set[str]:
+    """Subject prefixes appearing in the student's completed/current courses."""
+    subjects: set[str] = set()
+    for key in ("completed_codes", "existing_course_codes", "settled_course_codes"):
+        for code in list(ctx.get(key) or []):
+            head = str(code or "").split(" ")[0]
+            subject = head.split("/")[-1].upper()
+            if subject:
+                subjects.add(subject)
+    return subjects
+
+
+class PlanGenerationError(RuntimeError):
+    """The model produced nothing a plan could be built from.
+
+    Distinct from an empty plan: an empty plan is a real answer ("your
+    university has no catalog, so there is nothing to schedule"), while this
+    means the generation itself failed and the caller must say so rather than
+    presenting a shell as a result.
+    """
+
+
+def _finish_reason(response) -> str:
+    try:
+        return getattr(response.choices[0], "finish_reason", "") or ""
+    except (AttributeError, IndexError, TypeError):
+        return ""
+
+
 async def generate_semester_plan(
     user_id: uuid.UUID,
     db: AsyncSession,
@@ -569,19 +626,43 @@ async def generate_semester_plan(
         client,
         model=settings.GROQ_MODEL,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=8192,
+        max_tokens=budget_max_tokens(prompt, 8192),
+        **json_kwargs(),
     )
-    text = response.choices[0].message.content.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    text = completion_text(response)
 
     try:
         plan = json.loads(text)
     except json.JSONDecodeError:
+        # The overwhelmingly common cause is a completion that ran out of budget
+        # mid-object, so the JSON is *valid up to a point*. The streaming path
+        # already knows how to read complete semesters out of a partial
+        # document; reuse it rather than throwing away a plan that is mostly
+        # there.
+        #
+        # What this replaces was worse than an error: a 200 whose plan_summary
+        # read "Failed to parse plan. Raw AI response below." and whose
+        # `warnings` — a list the UI renders to the student — held 500 characters
+        # of raw model output. A dump of half-written JSON is not a warning, and
+        # presenting the failure as a successful plan hides it from the caller
+        # entirely.
+        partial, salvaged = _try_parse_partial_semesters(text)
+        truncated = _finish_reason(response) == "length"
+        if not salvaged:
+            raise PlanGenerationError(
+                "The AI's plan was cut off before any complete term was written. "
+                "Try again, or plan fewer years at once."
+                if truncated
+                else "The AI did not return a usable plan. Please try again."
+            )
         plan = {
-            "plan_summary": "Failed to parse plan. Raw AI response below.",
-            "semesters": [],
-            "warnings": [text[:500]],
+            "plan_summary": (partial or {}).get("plan_summary")
+            or "Partial plan — the AI's response was cut short.",
+            "semesters": salvaged,
+            "warnings": [
+                f"Only the first {len(salvaged)} term(s) were generated before the "
+                "AI ran out of room. Re-run the plan to fill in the rest."
+            ],
         }
 
     # Hard-enforce constraints the AI may have violated, then top up toward the
@@ -594,12 +675,12 @@ async def generate_semester_plan(
 
 def _extract_json_from_stream(accumulated: str) -> str | None:
     """Try to extract a complete JSON object from accumulated streamed text."""
-    text = accumulated.strip()
-    # Strip markdown fences if present
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-        if "```" in text:
-            text = text.rsplit("```", 1)[0]
+    # Also drops a reasoning block: a model that thinks inline emits braces
+    # inside it, and the brace-matching scan below would lock on to one of
+    # those and return a fragment of the model's monologue as "the plan".
+    # An unclosed block means nothing but reasoning has arrived yet, which
+    # correctly leaves nothing to parse.
+    text = clean_model_text(accumulated)
     # Find the outermost { ... }
     start = text.find("{")
     if start == -1:
@@ -633,11 +714,7 @@ def _try_parse_partial_semesters(accumulated: str) -> tuple[dict | None, list[di
 
     Returns (partial_plan_info, list_of_complete_semesters_so_far).
     """
-    text = accumulated.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-        if "```" in text:
-            text = text.rsplit("```", 1)[0]
+    text = clean_model_text(accumulated)
 
     plan_summary = None
     semesters = []
@@ -735,7 +812,8 @@ async def generate_semester_plan_stream(
             client,
             model=settings.GROQ_MODEL,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=8192,
+            max_tokens=budget_max_tokens(prompt, 8192),
+            **json_kwargs(),
             stream=True,
         )
 

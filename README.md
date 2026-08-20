@@ -2,7 +2,7 @@
 
 **AI-powered academic and career advisor for Canadian university students.**
 
-Acadvo helps students plan their degrees strategically, track career targets, build portfolios, and prepare for internships — with an AI advisor that doesn't just chat, but takes real actions. It knows your courses, grades, degree requirements, projects, and career goals, and uses that full picture to add courses to your plan, flag risks, build timelines, and generate semester-by-semester schedules aligned with your university's course catalog. Built specifically for the Canadian university system, with GPA and grading-scale support for 16 Canadian universities. Verified course catalogs (with prerequisites and enrolment gates) currently ship for York (Computer Science, hand-authored) and Simon Fraser University (CMPT and MACM, via the course-ingestion pipeline), with more schools expandable through that same pipeline.
+Acadvo helps students plan their degrees strategically, track career targets, build portfolios, and prepare for internships — with an AI advisor that doesn't just chat, but takes real actions. It knows your courses, grades, degree requirements, projects, and career goals, and uses that full picture to add courses to your plan, flag risks, build timelines, and generate semester-by-semester schedules aligned with your university's course catalog. Built specifically for the Canadian university system, with GPA and grading-scale support for 16 Canadian universities. Verified course catalogs (with prerequisites and enrolment gates) currently ship for Simon Fraser University — 1,195 courses across 26 subjects, ingested from SFU's official course-outlines API — and York (Computer Science, hand-authored), with more schools expandable through the same pipeline.
 
 ## Tech Stack
 
@@ -10,7 +10,7 @@ Acadvo helps students plan their degrees strategically, track career targets, bu
 |-------|-----------|
 | **Backend** | Python 3.12, FastAPI, SQLAlchemy 2.0 (async), PostgreSQL, Alembic |
 | **Frontend** | React 19, Vite, Tailwind CSS, React Router v8, Axios |
-| **AI** | Groq — Llama 3.3 70B function calling (15 tools), Llama 3.2 11B Vision for image input, PDF/spreadsheet text extraction |
+| **AI** | Groq — `openai/gpt-oss-120b` function calling (15 tools), `qwen/qwen3.6-27b` for image input, PDF/spreadsheet text extraction. Gemini (optional) — Google Search grounding, used only to research a program's requirement rules from the university's own public pages |
 | **Auth** | JWT (HS256) with refresh token rotation, bcrypt password hashing |
 | **Infrastructure** | Docker Compose (PostgreSQL + backend + frontend) |
 
@@ -22,6 +22,7 @@ Acadvo helps students plan their degrees strategically, track career targets, bu
 - AI semester-by-semester course plan — targets your university's catalog (course-code conventions per school), respects prerequisites, balances workload (max 5/semester), aligns with career goals
 - Document import — upload a degree checklist (PDF, image, Excel, CSV) and the AI extracts requirements + courses automatically
 - Prerequisite flow visualization and PDF export
+- **Requirement rules, researched once per program** — electives and gen-ed are not lists, they are rules ("6.00 credits in AP/HUMA, minus these exclusions"), and hundreds of courses satisfy them. One student links their program's official requirements page; an AI run reads it and extracts those rules; the result is cached with its source URLs and reused for every student after them. A course is only ever said to satisfy a requirement alongside the page it was read from and a label saying whether the university stated it or Acadvo concluded it. Unresearched programs say so rather than guessing.
 
 ### AI Advisor
 - 15 function-calling tools: add courses, create projects, flag risks, generate timelines, update profiles, search course catalogs, build semester plans, add degree requirements
@@ -81,6 +82,7 @@ Acadvo helps students plan their degrees strategically, track career targets, bu
 
 3. Edit `.env` and set your values:
    - `GROQ_API_KEY` — your Groq API key (required for all AI features)
+   - `GEMINI_API_KEY` — optional; enables requirement-rule research ([get one here](https://aistudio.google.com/apikey)). Leave it empty and the app simply will not say which degree requirement a course satisfies, which is the honest answer when it has not read your university's rules.
    - `JWT_SECRET_KEY` — change to a random 32+ character string (run `openssl rand -hex 32`)
    - Other defaults work for local development
 
@@ -127,6 +129,11 @@ Make sure PostgreSQL is running and `DATABASE_URL` in `.env` points to it.
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Access token TTL | No | `30` |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | Refresh token TTL | No | `7` |
 | `GROQ_API_KEY` | Groq API key | Yes (for AI) | — |
+| `GEMINI_API_KEY` | Gemini key — requirement-rule research only; empty disables that path | No | (empty) |
+| `GEMINI_MODEL` | Model used for research | No | `gemini-flash-latest` |
+| `RESEARCH_USE_SEARCH_GROUNDING` | Let the model find requirement pages itself. **Billed** — 429s on the free tier | No | `False` |
+| `REQUIREMENT_RULE_TTL_DAYS` | Days before a researched rule is re-checked in the background | No | `180` |
+| `PROGRAM_RESEARCH_ENABLED` | Master switch for the background research worker | No | `True` |
 | `COOKIE_SECURE` | Send auth cookies only over HTTPS — set `True` in production | No | `False` |
 | `DEBUG` | Enables `/docs` and `/redoc` | No | `False` |
 | `SENTRY_DSN` | Sentry error tracking — disabled when empty | No | (empty) |
@@ -173,6 +180,7 @@ acadvo/
 │       ├── services/             # Business logic (degree, career, auth, etc.)
 │       └── ai/
 │           ├── client.py         # Groq client configuration
+│           ├── research_client.py # Gemini + Google Search grounding (citations required)
 │           ├── context.py        # System prompt builder (full user context)
 │           ├── tools.py          # 15 tool declarations for function calling
 │           ├── tool_executor.py  # Tool dispatch + handlers (DB operations)
@@ -233,6 +241,12 @@ The backend refuses to boot when `DEBUG=False` and any of these is wrong:
 | Magic-byte sniffing; declared Content-Type must match real bytes | `services/uploads.py` | Mislabelled files reaching PDF/spreadsheet parsers |
 | Page/sheet/row/character caps on extraction | `services/uploads.py` | Decompression bombs — a 10 MB XLSX or PDF expanding to exhaust a worker |
 | Every Groq call and every PDF/XLSX parse runs off the event loop | `ai/client.py` (`run_blocking`) | One user's chat or upload stalling the whole worker (trivially triggered DoS) |
+| A course-code shortlist, not the whole catalog, is put in each prompt — ranked, budget-capped, and still validated against the full catalog afterwards | `services/eligibility.py` | A real catalog (1,195 courses ≈ 23k tokens) exceeding the per-request token limit, breaking every AI feature as coverage grows |
+| Graduate-level courses filtered out of undergraduate advising | `services/eligibility.py` | An ingested catalog is the whole calendar; the planner scheduled an 800-level seminar into a first-year term |
+| Reasoning effort pinned low on JSON-producing calls | `config.py`, `ai/client.py` | A reasoning model spending its entire completion budget thinking and returning zero characters — measured at 4,631 tokens of reasoning, no plan |
+| Researched requirement rules must cite pages the model actually retrieved; forum/UGC citations dropped | `ai/research_client.py`, `research/schema.py` | A model answering from memory being stored, repeated to every future student, and surfacing as a wrong "this counts toward your degree" a year later |
+| Requirement rules can classify courses but never write to the catalog | `research/program_rules.py` | A hallucinated course code inside a rule becoming a course the advisor recommends |
+| Exclusion lists subtracted from option lists, and checked first | `research/schema.py`, `services/requirement_rules.py` | Recommending exactly the courses a requirement rules out — the two lists sit one sentence apart in real documents |
 | Email verification required for every AI endpoint | `deps.py` (`require_verified_email`) | Throwaway addresses burning Groq budget; accounts on addresses the signer-up doesn't own |
 | Feed token redacted from the request log **and** uvicorn's access log **and** Sentry | `observability.py` | Leaking a permanent bearer credential for a user's schedule into logs |
 | CSP, HSTS, `frame-ancestors`, Permissions-Policy, COOP/CORP — repeated into every nginx `location` | `frontend/nginx.conf`, `security-headers.conf` | XSS impact, clickjacking. **`add_header` is not inherited into a `location` that sets its own — hence the `include`.** |
@@ -245,6 +259,45 @@ The backend refuses to boot when `DEBUG=False` and any of these is wrong:
 - **Rate limits are per-worker unless shared.** With `--workers N` an in-memory limit is effectively multiplied by N and resets on restart. The prod compose wires `RATE_LIMIT_STORAGE_URI` to Redis for you.
 - **Set `SMTP_*`. This is now load-bearing, not optional.** The AI features require a verified email address, and verification links are delivered by email. With SMTP unconfigured those links are only written to the server log, so no real user can ever reach the advisor. The app warns about this at startup.
 - **Rotate the pinned base-image digests deliberately.** Pinning stops silent drift but also stops silent patching; refresh them on a schedule.
+- **Check the Groq model ids before you trust an AI failure.** Groq retires hosted models, and a retired id fails *every* AI call with a 404 — one dead config value reads as "the whole product is broken". The Llama models this app was built against are already gone. `curl https://api.groq.com/openai/v1/models -H "Authorization: Bearer $GROQ_API_KEY"` lists what is actually servable; the defaults live in `backend/app/config.py`.
+- **On Groq's free tier, set `GROQ_MAX_REQUEST_TOKENS` to 8000.** Groq's per-minute token limit is also a *per-request* limit: one call whose prompt plus `max_tokens` exceeds it is refused with a 413 every time, no matter how long you wait. The semester planner asks for an 8,192-token completion, so on the free tier it fails 100% of the time. With this set, the planner trims its completion budget to fit and produces a real plan; if a plan still runs long, the terms that completed are returned with a warning rather than discarded. A paid tier leaves this at 0.
+- **Schedule `scripts/backup-db.sh` and copy the dumps off the host.** Nothing in the stack backs the database up on its own. See [Backups, restore, and rollback](#backups-restore-and-rollback).
+- **Point an uptime monitor at both hostnames.** `https://$API_DOMAIN/health` returns `{"status":"ok"}` without touching the database or requiring auth; `https://$APP_DOMAIN/` serves the app shell. Container-level `HEALTHCHECK`s restart a wedged service but tell you nothing when the whole host is gone.
+- **Set `SENTRY_DSN`.** Without it a 500 in production exists only in `docker compose logs`, which nobody is reading at the moment it happens. Sentry runs with `send_default_pii=False` and the feed token scrubbed.
+
+### Backups, restore, and rollback
+
+Every user's academic record lives in one Postgres volume, and that volume is on the same host as the app. Nothing above protects it from a bad migration, a `docker compose down -v`, or a dead disk.
+
+```bash
+./scripts/backup-db.sh                    # -> ./backups/acadvo-<utc-stamp>.sql.gz
+RETENTION_DAYS=30 ./scripts/backup-db.sh  # keep a month instead of a fortnight
+```
+
+`pg_dump` runs *inside* the db container (nothing publishes a Postgres port), the stream is gzipped on the host, and the result is verified — `gzip -t` plus a check for the dump's terminator line — before it is promoted from `.partial` to its final name. A truncated backup that looks fine is worse than no backup, and both of its failure modes are silent.
+
+Run it from cron on the deployment host:
+
+```bash
+15 3 * * * cd /srv/acadvo && ./scripts/backup-db.sh >> /var/log/acadvo-backup.log 2>&1
+```
+
+Two things the script cannot do for you: **copy the dumps off the host** (a disk failure takes the app and its backups together — push them to object storage, encrypted), and **prove they restore**. Practise that on a scratch host:
+
+```bash
+./scripts/restore-db.sh backups/acadvo-20260819T031500Z.sql.gz
+```
+
+It stops the backend first so nothing writes into a half-restored schema, replays the dump with `ON_ERROR_STOP=1`, and starts the backend again (which runs `alembic upgrade head` on boot). It asks you to type the database name, because it overwrites everything.
+
+**Rolling back a release** is a rebuild at the previous commit — images are built from this repo, not pulled from a registry:
+
+```bash
+git checkout <previous-good-sha>
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+That reverts application code only. A release containing an Alembic migration is *not* fully reversible this way: the old code will run against the new schema. Check `backend/alembic/versions/` before rolling back across a migration, and use the pre-deploy backup if the schema has to go back too — which is the reason to take one immediately before every deploy, not only nightly.
 
 ### Email verification
 
@@ -262,6 +315,7 @@ Migration `015` marks all pre-existing accounts verified. Those rows predate any
 - `npm run audit` — a gate script that fails on any high/critical advisory not carrying a written, **expiring** justification in `frontend/audit-allowlist.json` (that allowlist is currently empty — everything known is actually fixed)
 - Bandit and CodeQL (`security-extended`) for Python and JS
 - gitleaks over full history
+- a build of both **production images**, a smoke test that the frontend container serves the app with its CSP placeholder actually substituted, and an interpolation check of `docker-compose.prod.yml`. The other jobs run pytest and `npm run build` on the runner, so nothing there ever exercises the Dockerfiles — image-only breakage used to surface on the deployment host
 
 Run them locally the same way:
 

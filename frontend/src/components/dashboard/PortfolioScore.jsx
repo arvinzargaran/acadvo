@@ -9,7 +9,7 @@ export default function PortfolioScore({ projects }) {
   const inProgress = projects.filter(p => p.status === 'in_progress').length;
 
   const score = total === 0 ? 0 : Math.round((ready / Math.max(total, 3)) * 100);
-  const ringColor = score >= 66 ? '#4ade80' : score >= 33 ? '#facc15' : '#f87171';
+  const ringColor = score >= 66 ? 'rgb(var(--c-signal-green-500))' : score >= 33 ? 'rgb(var(--c-signal-amber-500))' : 'rgb(var(--c-signal-red-500))';
 
   return (
     <Card gradient>

@@ -4,7 +4,7 @@ export default function GPATracker({ summary }) {
   if (!summary || summary.cumulative_gpa === null || summary.cumulative_gpa === undefined) {
     return (
       <Card>
-        <h3 className="text-white font-semibold mb-2">GPA</h3>
+        <h3 className="text-dark-50 font-semibold mb-2">GPA</h3>
         <p className="text-dark-400 text-sm">No graded courses yet.</p>
       </Card>
     );
@@ -16,7 +16,7 @@ export default function GPATracker({ summary }) {
 
   return (
     <Card>
-      <h3 className="text-white font-semibold mb-3">GPA</h3>
+      <h3 className="text-dark-50 font-semibold mb-3">GPA</h3>
       <div className="flex items-end gap-4 mb-4">
         <div>
           <p className="text-dark-400 text-xs">Cumulative</p>

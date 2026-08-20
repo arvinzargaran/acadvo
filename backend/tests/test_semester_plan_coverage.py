@@ -25,6 +25,7 @@ from app.services.auth import hash_password
 from app.services.document_parser import normalize_course_code as _n
 from app.services.semester_plan import (
     MAX_COURSES_PER_SEMESTER,
+    PlanGenerationError,
     _build_future_semesters,
     _extract_json_from_stream,
     _pad_plan_to_target,
@@ -389,14 +390,48 @@ async def test_generate_semester_plan_end_to_end(planner_user, db, monkeypatch):
     assert any(c.get("is_placeholder") for c in all_courses)  # padded toward total
 
 
-async def test_generate_semester_plan_handles_unparseable_response(planner_user, db, monkeypatch):
+async def test_generate_semester_plan_rejects_an_unparseable_response(planner_user, db, monkeypatch):
+    """Prose instead of a plan is a failure, and must be reported as one.
+
+    This used to return HTTP 200 with plan_summary="Failed to parse plan. Raw AI
+    response below." and the model's raw output stuffed into `warnings` — a list
+    the UI renders to the student. A dump of half-written JSON is not a warning,
+    and dressing a failure as a successful plan hides it from every caller.
+    """
     monkeypatch.setattr(
         "app.services.semester_plan.get_groq_client",
         lambda: _MockGroqClient("this is not json at all"),
     )
+    with pytest.raises(PlanGenerationError):
+        await generate_semester_plan(planner_user.id, db)
+
+
+async def test_generate_semester_plan_salvages_a_truncated_response(planner_user, db, monkeypatch):
+    """A plan cut off mid-object still contains whole terms; keep them.
+
+    Running out of completion budget is the common failure — especially on an
+    account with a low per-request token cap — and the terms that did finish are
+    a usable answer. Discarding them because the last one is incomplete throws
+    away work the student can act on.
+    """
+    truncated = (
+        '{"plan_summary": "Front-load the core.", "semesters": ['
+        '{"term": "Fall 2099", "courses": [{"course_code": "CS200", '
+        '"course_name": "Data Structures", "credits": 3.0}], "semester_notes": ""},'
+        '{"term": "Winter 2100", "courses": [{"course_code": "CS2'
+    )
+    monkeypatch.setattr(
+        "app.services.semester_plan.get_groq_client",
+        lambda: _MockGroqClient(truncated),
+    )
     plan = await generate_semester_plan(planner_user.id, db)
-    assert "Failed to parse" in plan["plan_summary"]
-    assert isinstance(plan["semesters"], list)
+
+    assert plan["plan_summary"] == "Front-load the core."
+    terms = [s["term"] for s in plan["semesters"]]
+    assert "Fall 2099" in terms
+    # The salvage warning names what happened; the raw model text never appears.
+    assert any("cut" in w.lower() or "ran out of room" in w.lower() for w in plan["warnings"])
+    assert not any("course_code" in w for w in plan["warnings"])
 
 
 async def test_generate_semester_plan_stream_emits_sse_events(planner_user, db, monkeypatch):

@@ -170,8 +170,8 @@ export default function SettingsPage() {
             <Input label="City" value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-dark-300 mb-1">Career Target</label>
-            <textarea
+            <label htmlFor="settingspage-career-target" className="block text-sm font-medium text-dark-300 mb-1">Career Target</label>
+            <textarea id="settingspage-career-target"
               value={form.career_target}
               onChange={e => setForm(f => ({ ...f, career_target: e.target.value }))}
               className="w-full bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-3 py-2 h-20 text-sm placeholder-dark-400 focus:border-primary-500 transition-colors resize-none"

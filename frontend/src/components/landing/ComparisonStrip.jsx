@@ -108,8 +108,8 @@ export default function ComparisonStrip() {
   const viewport = { once: true, margin: '-80px' };
 
   return (
-    <section className="py-28 md:py-32 px-6">
-      <div className="max-w-4xl mx-auto">
+    <div>
+      <div>
         {/* Header */}
         <motion.div
           initial={reduced ? false : 'hidden'}
@@ -118,20 +118,11 @@ export default function ComparisonStrip() {
           variants={fadeUp}
           custom={0}
         >
-          {/* Eyebrow */}
-          <div className="flex items-center gap-4 mb-10">
-            <span className="font-display text-primary-600 text-base">04</span>
-            <span className="text-[11px] tracking-[0.28em] uppercase text-gray-400 whitespace-nowrap">
-              The difference
-            </span>
-            <div className="h-px flex-1 bg-dark-600/70" />
-          </div>
-
           <h2 className="font-display font-bold text-dark-50 tracking-tight text-4xl md:text-5xl leading-[1.05]">
             One place, not{' '}
             <span className="font-display text-gradient-warm">fifteen.</span>
           </h2>
-          <p className="text-gray-400 text-lg mt-5 max-w-xl">
+          <p className="text-dark-400 text-lg mt-5 max-w-xl">
             One spreadsheet gone stale, five apps that never talk to each other, or
             everything pulling in the same direction.
           </p>
@@ -159,7 +150,7 @@ export default function ComparisonStrip() {
               <thead>
                 <tr>
                   <th className="text-left align-bottom pb-4 pr-4">
-                    <span className="text-[11px] tracking-[0.22em] uppercase text-gray-400">
+                    <span className="text-[11px] tracking-[0.22em] uppercase text-dark-400">
                       Capability
                     </span>
                   </th>
@@ -233,11 +224,11 @@ export default function ComparisonStrip() {
           viewport={viewport}
           variants={fadeUp}
           custom={0.15}
-          className="text-[11px] text-gray-400 mt-5"
+          className="text-[11px] text-dark-400 mt-5"
         >
           * Free until you factor in the hours spent keeping it current.
         </motion.p>
       </div>
-    </section>
+    </div>
   );
 }

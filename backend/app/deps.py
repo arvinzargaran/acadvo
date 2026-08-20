@@ -51,9 +51,14 @@ async def get_current_user(
 # facing a wall of errors with no explanation.
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 
+# Names the whole class of gated features rather than one of them: this same
+# detail is raised for document parsing and course recommendations, so telling a
+# user mid-onboarding to verify "to use the AI advisor" describes a feature they
+# were not touching. "Settings" is also unreachable during onboarding, so the
+# resend instruction stays generic and each screen offers the action in place.
 EMAIL_UNVERIFIED_DETAIL = (
-    "Verify your email address to use the AI advisor. "
-    "Check your inbox, or request a new link from Settings."
+    "Verify your email address to use Acadvo's AI features. "
+    "Check your inbox, or use the resend link in the app."
 )
 
 

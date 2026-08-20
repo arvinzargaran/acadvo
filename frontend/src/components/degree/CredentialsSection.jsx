@@ -114,7 +114,7 @@ export default function CredentialsSection({ credentials, courses, onRefresh }) 
               <Card key={cred.id}>
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <h3 className="text-white font-semibold">{cred.name}</h3>
+                    <h3 className="text-dark-50 font-semibold">{cred.name}</h3>
                     {cred.description && (
                       <p className="text-dark-400 text-sm mt-0.5">{cred.description}</p>
                     )}

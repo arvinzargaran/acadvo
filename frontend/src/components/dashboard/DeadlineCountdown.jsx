@@ -22,7 +22,7 @@ export default function DeadlineCountdown({ events }) {
       <p className="text-dark-400 text-sm mb-1">Next Hard Deadline</p>
       <p className={`text-4xl font-bold ${urgencyColor}`}>{days}</p>
       <p className="text-dark-300 text-sm">days remaining</p>
-      <p className="text-white mt-2 font-medium">{next.title}</p>
+      <p className="text-dark-50 mt-2 font-medium">{next.title}</p>
       <p className="text-dark-400 text-xs">{next.event_date}</p>
     </Card>
   );

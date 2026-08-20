@@ -1,4 +1,5 @@
 import Badge from '../ui/Badge';
+import { milestoneStatusLabel } from '../../utils/labels';
 
 const statusColors = {
   pending: 'gray',
@@ -27,7 +28,7 @@ export default function MilestoneItem({ milestone, onUpdate }) {
         {milestone.target_date && (
           <span className="text-dark-400 text-xs">{milestone.target_date}</span>
         )}
-        <Badge color={statusColors[milestone.status]} variant="label" dot>{milestone.status}</Badge>
+        <Badge color={statusColors[milestone.status]} variant="label" dot>{milestoneStatusLabel(milestone.status)}</Badge>
       </div>
     </div>
   );

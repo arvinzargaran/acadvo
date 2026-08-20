@@ -18,6 +18,32 @@ export function generateRecommendations(semester, goal = 'both', requirementBuck
   }, { timeout: 60000 });
 }
 
+/**
+ * What Acadvo knows about this student's program requirements, and why it does
+ * or doesn't know it. Calling this also nudges the server to research an
+ * uncovered program in the background — the response comes back immediately
+ * either way, so it is safe to call on page load.
+ *
+ * `state` is one of: ready | researching | not_started | failed | empty |
+ * unavailable. `message` is written to be shown to the student verbatim.
+ */
+export function getProgramRules() {
+  return client.get('/course-advisor/program-rules');
+}
+
+/**
+ * Supply the URL of this program's official requirements page and queue the
+ * research that reads it. One student does this once per program; the extracted
+ * rules then apply to everyone in it.
+ */
+export function researchProgramRules(url) {
+  return client.post('/course-advisor/program-rules/research', { url });
+}
+
+export function refreshProgramRules() {
+  return client.post('/course-advisor/program-rules/refresh');
+}
+
 export function acceptRecommendation(id) {
   return client.post(`/course-advisor/recommendations/${id}/accept`);
 }
@@ -75,7 +101,9 @@ export function streamSemesterPlan(body, onEvent) {
       if (!response.ok) {
         const text = await response.text();
         let detail = 'Failed to generate plan.';
-        try { detail = JSON.parse(text).detail || detail; } catch {}
+        // A non-JSON error body (a proxy 502 page, a truncated response)
+        // is expected here; the generic message above stands in for it.
+        try { detail = JSON.parse(text).detail || detail; } catch { /* keep the fallback */ }
         onEvent({ type: 'error', message: detail });
         return;
       }
@@ -108,7 +136,7 @@ export function streamSemesterPlan(body, onEvent) {
       if (buffer.trim().startsWith('data: ')) {
         try {
           onEvent(JSON.parse(buffer.trim().slice(6)));
-        } catch {}
+        } catch { /* a half-written final frame is not worth reporting */ }
       }
     })
     .catch((err) => {

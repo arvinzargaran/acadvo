@@ -39,7 +39,7 @@ function UserBubble({ text }) {
 function AIBubble({ children }) {
   return (
     <div className="flex justify-start">
-      <div className="max-w-[85%] rounded-xl px-3 py-2 text-xs leading-relaxed bg-dark-900/40 border border-dark-600 text-gray-300">
+      <div className="max-w-[85%] rounded-xl px-3 py-2 text-xs leading-relaxed bg-dark-900/40 border border-dark-600 text-dark-300">
         <span className="block text-[10px] text-primary-700 font-semibold mb-1">Acadvo AI</span>
         {children}
       </div>
@@ -96,7 +96,7 @@ function Shell({ children }) {
         <div className="flex items-center gap-2 rounded-xl border border-dark-600 bg-dark-900/30 px-3 py-2">
           <span className="text-xs text-dark-400 flex-1">Ask anything about your degree...</span>
           <div className="w-5 h-5 rounded-full bg-primary-600 flex items-center justify-center">
-            <svg viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-white">
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-dark-50">
               <path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086l-1.414 4.926a.75.75 0 00.826.95 28.896 28.896 0 0015.293-7.154.75.75 0 000-1.115A28.897 28.897 0 003.105 2.289z" />
             </svg>
           </div>

@@ -44,8 +44,8 @@ export default function CareerPage() {
       ]);
       setTargets(targetsRes.data);
       setEvents(eventsRes.data);
-    } catch {
-      setError('Failed to load career data.');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load career data.'));
     } finally {
       setLoading(false);
     }
@@ -89,8 +89,8 @@ export default function CareerPage() {
     try {
       await deleteCareerTarget(id);
       load();
-    } catch {
-      setError('Failed to delete target.');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to delete target.'));
     }
   };
 
@@ -98,8 +98,8 @@ export default function CareerPage() {
     try {
       await updateCareerTarget(id, { status: newStatus });
       load();
-    } catch {
-      setError('Failed to update status.');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to update status.'));
     }
   };
 
@@ -398,8 +398,8 @@ export default function CareerPage() {
             <Input label="Target Term" value={form.target_term} onChange={e => setForm(f => ({ ...f, target_term: e.target.value }))} placeholder="e.g. Summer 2027" />
           </div>
           <div>
-            <label className="block text-sm text-dark-300 mb-1">Status</label>
-            <select
+            <label htmlFor="careerpage-status" className="block text-sm text-dark-300 mb-1">Status</label>
+            <select id="careerpage-status"
               value={form.status}
               onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
               className="w-full bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-3 py-2"
@@ -412,8 +412,8 @@ export default function CareerPage() {
             </select>
           </div>
           <div>
-            <label className="block text-sm text-dark-300 mb-1">Notes</label>
-            <textarea
+            <label htmlFor="careerpage-notes" className="block text-sm text-dark-300 mb-1">Notes</label>
+            <textarea id="careerpage-notes"
               value={form.notes}
               onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
               className="w-full bg-dark-800 border border-dark-600 text-dark-50 rounded-lg px-3 py-2 h-20 resize-none"

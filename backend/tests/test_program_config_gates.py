@@ -20,8 +20,12 @@ from app.models.catalog import CatalogCourse
 from app.models.degree import Course, CourseStatus
 from app.models.user import User
 from app.services.auth import hash_password
-from app.services.catalog import has_seeded_catalog
-from app.services.degree import calculate_gpa
+from app.services.catalog import (
+    UniversityNotSetError,
+    has_seeded_catalog,
+    require_university,
+)
+from app.services.degree import NoMajorGateError, calculate_gpa, project_major_gpa_goal
 
 
 async def _make_user(db, *, university, program, courses):
@@ -168,3 +172,70 @@ async def test_prompt_best_effort_for_unseeded_university(db):
     assert "best-effort" in prompt
     # Must NOT leak York's EECS gate to a UofT student.
     assert "EECS" not in prompt
+
+
+# ── 5. No university on file is asked about, never guessed ───────────
+
+
+async def test_advising_refuses_to_guess_a_university(db):
+    """A student who skipped the university step is asked, not defaulted.
+
+    Three call sites used `user.university or "York University"`, so this student
+    was silently advised against York's catalog, in York's course-code format,
+    under York's EECS gate — authoritative-looking advice about somebody else's
+    degree, with nothing on screen admitting it.
+    """
+    user = await _make_user(db, university=None, program="Computer Science", courses=[])
+    with pytest.raises(UniversityNotSetError):
+        require_university(user)
+
+
+async def test_blank_university_counts_as_unset(db):
+    """An empty string is not a university; whitespace is not either."""
+    user = await _make_user(db, university="   ", program="CS", courses=[])
+    with pytest.raises(UniversityNotSetError):
+        require_university(user)
+
+
+async def test_major_gpa_goal_refuses_a_program_with_no_gate(db):
+    """The projection used to default to York's 4.50 EECS gate for everyone.
+
+    A UofT student asking "what do I need to average?" got a confident number
+    computed against a subject prefix that appears nowhere on their transcript.
+    """
+    user = await _make_user(
+        db,
+        university="University of Toronto",
+        program="Computer Science",
+        courses=[("CSC148", "Intro to CS", 0.5, "A")],
+    )
+    with pytest.raises(NoMajorGateError):
+        await project_major_gpa_goal(user.id, db, remaining_credits=6)
+
+
+async def test_major_gpa_goal_uses_the_students_own_gate(db):
+    """York's gate still resolves — from the config, not from a default."""
+    user = await _make_user(
+        db,
+        university="York University",
+        program="Computer Science",
+        courses=[("LE/EECS 1012", "Intro to Computing", 3.0, "C")],
+    )
+    data = await project_major_gpa_goal(user.id, db, remaining_credits=6)
+    assert data["scope"] == "EECS"
+    assert data["gate"] == 4.50
+
+
+async def test_an_explicit_scope_still_overrides(db):
+    """The API exposes scope/gate so a student can explore one the config lacks."""
+    user = await _make_user(
+        db,
+        university="University of Toronto",
+        program="Computer Science",
+        courses=[("CSC148", "Intro to CS", 0.5, "A")],
+    )
+    data = await project_major_gpa_goal(
+        user.id, db, remaining_credits=6, faculty_prefix="CSC", gate=3.0
+    )
+    assert data["scope"] == "CSC"
+    assert data["gate"] == 3.0

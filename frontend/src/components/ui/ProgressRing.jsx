@@ -18,17 +18,9 @@ export default function ProgressRing({
     return () => clearTimeout(timeout);
   }, [value]);
 
-  const gradientId = `ring-gradient-${size}-${label || 'default'}`;
-
   return (
     <div className={`relative inline-flex items-center justify-center ${className}`}>
       <svg width={size} height={size} className="-rotate-90">
-        <defs>
-          <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor={color || '#FF8A00'} />
-            <stop offset="100%" stopColor={color ? color : '#F07E00'} />
-          </linearGradient>
-        </defs>
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -43,7 +35,7 @@ export default function ProgressRing({
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke={color || `url(#${gradientId})`}
+          stroke={color || 'var(--wf-live)'}
           strokeWidth={strokeWidth}
           strokeDasharray={circumference}
           strokeDashoffset={offset}
@@ -52,7 +44,7 @@ export default function ProgressRing({
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="font-display tabular-nums text-2xl font-bold text-white">
+        <span className="font-display tabular-nums text-2xl font-bold text-dark-50">
           {Math.round(animatedValue)}%
         </span>
         {label && (

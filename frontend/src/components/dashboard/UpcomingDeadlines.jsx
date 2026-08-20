@@ -59,7 +59,7 @@ export default function UpcomingDeadlines({ events, projects }) {
 
   return (
     <Card>
-      <h3 className="text-white font-semibold mb-3">Upcoming Deadlines</h3>
+      <h3 className="text-dark-50 font-semibold mb-3">Upcoming Deadlines</h3>
       {sorted.length === 0 ? (
         <p className="text-dark-400 text-sm">No upcoming deadlines — you're all clear!</p>
       ) : (
@@ -70,7 +70,7 @@ export default function UpcomingDeadlines({ events, projects }) {
                 <span className="text-xs font-bold">{urgencyBadge(item.days)}</span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate text-white">{item.title}</p>
+                <p className="text-sm font-medium truncate text-dark-50">{item.title}</p>
                 <p className="text-xs opacity-60">{item.source}</p>
               </div>
               <span className="text-xs opacity-50 flex-shrink-0">{item.date}</span>

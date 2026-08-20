@@ -78,6 +78,14 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      # Correctness and accessibility only — no style rules. Added after an audit
+      # found every form field in the app unlabelled and the university combobox
+      # unreachable by keyboard; both are exactly what jsx-a11y catches, and both
+      # were invisible to the test suite and to review.
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+
       - name: Build
         working-directory: frontend
         run: npm run build
@@ -179,3 +187,58 @@ jobs:
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  images:
+    name: Production images build
+    runs-on: ubuntu-latest
+
+    # The Dockerfiles are not exercised by any job above: the backend job runs
+    # pytest on the runner and the frontend job runs `npm run build` on the
+    # runner, so a broken image (a non-root permission problem, a bad sed in the
+    # CSP rewrite, a missing COPY) is only discovered on the deployment host.
+    # That has already happened once. Building both images here — and checking
+    # the compose file interpolates — moves that failure into CI.
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Build backend image
+        run: docker build -t acadvo-backend:ci ./backend
+
+      - name: Build frontend image
+        # A real https URL, not a placeholder: the frontend Dockerfile derives
+        # the CSP connect-src from it with sed, so a value of the wrong shape
+        # would bake a broken policy and still build green.
+        run: docker build -t acadvo-frontend:ci --build-arg VITE_API_URL=https://api.example.com ./frontend
+
+      - name: Frontend image serves the app and its security headers
+        run: |
+          docker run -d --name fe -p 8080:8080 acadvo-frontend:ci
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8080/ >/dev/null && break
+            sleep 1
+          done
+          headers=$(curl -fsS -D - -o /dev/null http://127.0.0.1:8080/)
+          echo "$headers"
+          # The CSP placeholder must have been substituted, and the API origin
+          # must be in connect-src or every XHR from the deployed app is blocked.
+          echo "$headers" | grep -qi 'content-security-policy' || { echo "no CSP"; exit 1; }
+          # `if` rather than `grep ... && { exit 1; }`: the && form returns grep's
+          # exit status, so the *passing* case (no match) fails the step under
+          # the shell's -e.
+          if echo "$headers" | grep -q '__CSP_CONNECT_SRC__'; then
+            echo "CSP placeholder was not substituted"; exit 1
+          fi
+          echo "$headers" | grep -q 'https://api.example.com' || { echo "API origin missing from CSP"; exit 1; }
+          echo "$headers" | grep -qi 'x-frame-options: DENY' || { echo "no X-Frame-Options"; exit 1; }
+          docker rm -f fe
+
+      - name: Production compose file is valid
+        env:
+          APP_DOMAIN: example.com
+          API_DOMAIN: api.example.com
+          ACME_EMAIL: ci@example.com
+          POSTGRES_USER: acadvo
+          POSTGRES_PASSWORD: ci-only-not-a-real-password
+          POSTGRES_DB: acadvo
+          VITE_API_URL: https://api.example.com
+        run: docker compose -f docker-compose.prod.yml config >/dev/null

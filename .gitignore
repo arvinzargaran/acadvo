@@ -36,3 +36,6 @@ docker-compose.override.yml
 .coverage
 htmlcov/
 .pytest_cache/
+
+# Database dumps (scripts/backup-db.sh) — real user data, never versioned.
+backups/
