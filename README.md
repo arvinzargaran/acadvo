@@ -1,5 +1,7 @@
 # Acadvo
 
+[![CI](https://github.com/arvinzargaran/acadvo/actions/workflows/ci.yml/badge.svg)](https://github.com/arvinzargaran/acadvo/actions/workflows/ci.yml)
+
 **AI-powered academic and career advisor for Canadian university students.**
 
 Acadvo helps students plan their degrees strategically, track career targets, build portfolios, and prepare for internships — with an AI advisor that doesn't just chat, but takes real actions. It knows your courses, grades, degree requirements, projects, and career goals, and uses that full picture to add courses to your plan, flag risks, build timelines, and generate semester-by-semester schedules aligned with your university's course catalog. Built specifically for the Canadian university system, with GPA and grading-scale support for 16 Canadian universities. Verified course catalogs — with prerequisites and enrolment gates — are ingested from each university's own catalog source: **York** (public Kuali catalog API, whole university), the **University of Toronto** (public calendar JSON:API, all three campuses), **Simon Fraser** (public course-outlines API), and the **University of Waterloo** (official Open Data API — needs a free `WATERLOO_API_KEY`). Adapters never fabricate a course: a prerequisite is only ever a code the university itself published, and a school with no catalog degrades honestly instead of guessing. Every source was assessed before it was used, and the ones deliberately *not* used are recorded with the reason — see `backend/app/ingest/SOURCES.md`.
