@@ -65,10 +65,5 @@ id_ed25519
 *.db
 *.sql.gz
 
-# Agent/skill tooling. Local workflow, not part of the product.
-.agents/
-.claude/skills/
-.claude/settings.local.json
-skills-lock.json
-vibe-check-report.md
+# Superseded planning notes kept on disk for reference, not versioned.
 pathfinder-overview.txt
