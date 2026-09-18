@@ -295,4 +295,12 @@ jobs:
           POSTGRES_PASSWORD: ci-only-not-a-real-password
           POSTGRES_DB: acadvo
           VITE_API_URL: https://api.example.com
-        run: docker compose -f docker-compose.prod.yml config >/dev/null
+        run: |
+          # The backend service declares `env_file: .env`, and compose refuses to
+          # resolve a file it cannot read — so `config` fails on a clean checkout
+          # even though every interpolated variable is supplied above. An empty
+          # file satisfies the reference without shadowing anything: shell
+          # environment wins over .env entries during interpolation.
+          touch .env
+          docker compose -f docker-compose.prod.yml config >/dev/null
+          rm -f .env
