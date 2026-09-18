@@ -1,7 +1,8 @@
-# AI research + cached requirement rules — SHIPPED
+# AI research and cached requirement rules
 
-Built 2026-08-12, from the handoff of the same date. `SOURCES.md` still records
-which sources are usable and which are off-limits; nothing there changed.
+How Acadvo turns a program's published requirements page into reusable rules.
+`SOURCES.md` is the companion document: it records which catalog sources are
+usable and which are off-limits, and why.
 
 ## What was built
 
@@ -13,7 +14,7 @@ human authors a rule.
 
 | Piece | Where |
 |---|---|
-| Gemini provider (Google Search grounding) | `app/ai/research_client.py` |
+| Page fetch + grounded extraction | `app/ai/research_client.py` |
 | Extraction contract + safety guards | `app/research/schema.py` |
 | Prompt, extraction, persistence | `app/research/program_rules.py` |
 | Background queue / worker | `app/research/runner.py` |
@@ -24,10 +25,12 @@ human authors a rule.
 | API | `GET/POST /course-advisor/program-rules[/refresh]` |
 | UI | `ProgramRulesPanel.jsx`, `BucketVerdict.jsx` |
 
-Groq was **not** replaced. It still does document parsing and catalog-grounded
-recommendations, which are cheap and already grounded in data we hold. Gemini is
-used for exactly one thing — reading live university pages — because the
-OpenAI-compat shims do not expose search grounding and Groq cannot browse.
+Groq is the only provider. It does document parsing and catalog-grounded
+recommendations as before; for research it is handed the text of a page **this
+app fetched itself**, because Groq cannot browse and nothing here may be billed.
+Doing our own retrieval turned out to be the stronger design anyway — the HTTP
+status is ours to check, so "the model cited a page it never opened" is not a
+state the system can reach.
 
 ## The UX decision
 
@@ -83,28 +86,38 @@ Each is enforced in code, tested, and mutation-tested (see below).
 - Migration `016` applied and rolled back against real Postgres.
 - End-to-end verified in the browser with a seeded rule (since removed).
 
-## Retrieval: url_context, not Search grounding (this is the money question)
+## Retrieval: we fetch the page, the model never browses
 
-**Google Search grounding is a paid feature.** On the Gemini free tier every
-grounded call returns `429 RESOURCE_EXHAUSTED` — verified across nine models,
-including all current Flash and Pro variants. It is not a rate limit and has
-nothing to do with the RPM/TPM figures on AI Studio's Rate Limit page; search
-queries are metered and billed separately ($14/1k on Gemini 3, with the free
-monthly allowance applying only once billing is enabled).
+**Everything here runs on the Groq free tier and nothing is billed.** That ruled
+out the original design (Gemini's Google Search grounding, a metered feature that
+429s on Google's free tier regardless of model), and it also rules out Groq's own
+`groq/compound` web search: a search pulls several whole pages into one request,
+and Groq applies its per-minute token allowance *per request*, so it comes back
+`413 Request Entity Too Large` every time.
 
-**`url_context` is free and does the part that matters.** It reads pages you
-name, on the free tier, and reports a per-URL `URL_RETRIEVAL_STATUS`. So the
-pipeline reads the university's page without paying; the only thing lost is
-*discovery*, which is why a program's requirements URL is supplied by a student
-(POST `/course-advisor/program-rules/research`) rather than searched for.
+**So the app fetches the page itself** (`research_client.fetch_page`) — an
+ordinary HTTPS GET, zero tokens — strips it to text, and gives the model that
+text and nothing else. `settings.RESEARCH_USE_SEARCH_GROUNDING` turns discovery
+back on for an account with the per-request headroom; it is off by default, which
+is why a program's requirements URL is supplied by a student (POST
+`/course-advisor/program-rules/research`) rather than searched for.
 
-`settings.RESEARCH_USE_SEARCH_GROUNDING` turns discovery back on for a deployment
-with billing enabled; it is off by default.
+This is *better* evidence than any provider's grounding metadata, which only says
+"this informed the answer". We saw the HTTP status ourselves, so a model handed
+an unreachable URL cannot answer anyway from its address alone — the failure
+observed in testing under the old design. Two extra guards come from owning the
+fetch: a soft 404 (200 OK with a "Page Not Found" body, which university
+calendars serve constantly) and a JS-rendered page that yields only navigation
+chrome are both counted as *failed* retrievals, not as pages that said nothing.
 
-`url_retrieval_status` is *better* evidence than `groundingChunks`. Chunks say
-"this informed the answer"; the status says whether the page loaded. That matters
-because a model handed an unreachable URL will answer anyway, describing the page
-from its address alone — observed in testing. Only `SUCCESS` becomes a citation.
+**Watch the token ceiling.** `groq/compound` advertises 70,000 TPM against
+gpt-oss-120b's 8,000 and looks like free headroom for a whole calendar page. It
+is not — the compound systems are routers that delegate to the ordinary models
+and are refused on *their* limits; the same request 413s under compound while its
+own rate-limit headers still report 64,000 tokens remaining. Pages are therefore
+trimmed to fit `GROQ_MAX_REQUEST_TOKENS` (`research_client.page_budget_chars`),
+and the truncation is announced in the prompt so the model reports a partial read
+rather than a confident absence.
 
 ## Verified live (free tier, 2026-08-14)
 
@@ -130,12 +143,13 @@ surfaced it as a hard no.
 - **UofT course codes lose their campus digit.** `CSC110Y1` normalizes to
   `CSC 110Y`, so a UTM section and a St. George one collapse together.
   `normalize_course_code` needs a UofT-aware branch.
-- **Transient 503s burn a retry.** Google returned `503 UNAVAILABLE` on one of
-  two live runs; the worker records it as a failure against `MAX_ATTEMPTS`
-  rather than distinguishing "try again" from "this will never work".
-- **Cost is unbounded per program, not per student.** One research call per
+- **Transient failures burn a retry.** A provider 5xx, or a university site that
+  is briefly down, is recorded as a failure against `MAX_ATTEMPTS` rather than
+  distinguishing "try again" from "this will never work".
+- **Work is unbounded per program, not per student.** One research call per
   `(university, program)`, retried at most `MAX_ATTEMPTS` (3). That is the
-  intended shape, but nothing caps total programs.
+  intended shape, but nothing caps total programs — and on the free tier the
+  binding constraint is Groq's daily request allowance, not money.
 - **`level_floor` is the only structural constraint captured.** Real calendars
   also say things like "at most 6.00 credits at the 1000 level" — that is a
   *portfolio* constraint across courses, not a per-course test, and the current

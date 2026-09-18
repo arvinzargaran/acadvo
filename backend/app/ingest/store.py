@@ -55,9 +55,49 @@ async def upsert_catalog(
         for r in rows
     ]
 
+    # Last-line dedupe on the conflict key. Every adapter already dedupes, but a
+    # single chunk containing the same course twice does not merely write it
+    # twice — PostgreSQL aborts the whole statement with "ON CONFLICT DO UPDATE
+    # command cannot affect row a second time", losing the entire ingest over one
+    # repeated row.
+    by_code: dict[str, dict] = {}
+    for v in values:
+        by_code[v["course_code"]] = v
+    values = list(by_code.values())
+
     dialect = db.get_bind().dialect.name
     insert = pg_insert if dialect == "postgresql" else sqlite_insert
-    stmt = insert(CatalogCourse).values(values)
+
+    # Chunked because a single INSERT ... VALUES carries one bind parameter per
+    # column per row, and both backends cap that: PostgreSQL (asyncpg) at 32,767,
+    # SQLite lower still. A whole university does not fit. SFU's 1,853 courses
+    # times 11 columns came to 20,383 and squeaked under the ceiling, which is
+    # the only reason this held — the first genuinely large ingest (UofT, several
+    # thousand courses across three campuses) fetched every page correctly and
+    # then died on the write with "the number of query arguments cannot exceed
+    # 32767", losing the entire crawl.
+    for chunk in _chunks(values, _CHUNK_ROWS):
+        await _upsert_chunk(db, insert, chunk, dialect, now)
+
+    await db.commit()
+    return len(values)
+
+
+# One row costs len(_COLUMNS) parameters; stay well under the tighter of the two
+# backend ceilings so the same path works on SQLite in tests and PostgreSQL in
+# production.
+_MAX_BIND_PARAMS = 20000
+_COLUMN_COUNT = 11
+_CHUNK_ROWS = _MAX_BIND_PARAMS // _COLUMN_COUNT
+
+
+def _chunks(rows: list, size: int):
+    for i in range(0, len(rows), size):
+        yield rows[i:i + size]
+
+
+async def _upsert_chunk(db, insert, chunk: list, dialect: str, now) -> None:
+    stmt = insert(CatalogCourse).values(chunk)
     set_ = {
         "course_name": stmt.excluded.course_name,
         "credits": stmt.excluded.credits,
@@ -79,5 +119,3 @@ async def upsert_catalog(
         )
 
     await db.execute(stmt)
-    await db.commit()
-    return len(values)

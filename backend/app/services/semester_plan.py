@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 from app.models.career import CareerTarget
 from app.models.degree import Course, CourseStatus, DegreeRequirement
 from app.models.user import User
+from app.data.credit_models import get_credit_model
 from app.services.catalog import get_catalog, require_university
 from app.services.degree import get_degree_summary
 from app.services.document_parser import normalize_course_code
@@ -161,8 +162,19 @@ async def _gather_context(
         {normalize_course_code(c.course_code) for c in completed if c.course_code}
     )
 
+    # How much one course is worth HERE. Derived from the student's own checklist
+    # first and the seeded catalog second, so a Waterloo plan is counted in 0.5
+    # units and a York one in 3.0 credits instead of York's numbers everywhere.
+    credit_model = get_credit_model(
+        university,
+        student_credit_values=[c.credit_value for c in courses],
+        catalog_credit_values=[e.get("credits") for e in catalog.values()],
+        total_credits_required=summary.get("total_credits_required"),
+    )
+
     return {
         "user": user,
+        "credit_model": credit_model,
         "summary": summary,
         "completed": completed,
         "in_progress": in_progress,
@@ -183,6 +195,7 @@ async def _gather_context(
 def _build_prompt(ctx: dict) -> str:
     user = ctx["user"]
     summary = ctx["summary"]
+    cm = ctx["credit_model"]
     today = date.today().isoformat()
     current_sem = ctx["current_semester"]
 
@@ -247,7 +260,7 @@ def _build_prompt(ctx: dict) -> str:
             # Graduate courses are dropped outright: a real ingested catalog is
             # the whole calendar, and a first-year term of 800-level seminars is
             # not a plan.
-            undergraduate_only(ctx.get("catalog", {})),
+            undergraduate_only(ctx.get("catalog", {}), ctx["user"].university),
             _subjects_from_context(ctx),
             program=getattr(ctx.get("user"), "program", None),
             exclude=exclude_norm,
@@ -268,7 +281,7 @@ CRITICAL RULES — YOU MUST FOLLOW ALL OF THESE:
 2. Do NOT include any past or current semesters. Do NOT include {current_sem} or any earlier semester.
 3. Do NOT recommend any course the student has already completed or is currently taking.
 4. EXISTING COURSE CODES — DO NOT INCLUDE ANY OF THESE (already completed, in progress, or planned): {taken_str}
-5. Maximum {MAX_COURSES_PER_SEMESTER} courses per semester (typically 4-5, around 12-15 credits). NEVER exceed {MAX_COURSES_PER_SEMESTER}. This is a HARD limit.
+5. Maximum {MAX_COURSES_PER_SEMESTER} courses per semester (typically 4-5, about {cm.fmt(cm.full_term)} at this university). NEVER exceed {MAX_COURSES_PER_SEMESTER}. This is a HARD limit.
 6. Choose courses ONLY from the ALLOWED COURSES list below. Use these EXACT codes, names and credits. Do NOT invent course codes or recall courses from memory.
 7. Consider PREREQUISITES (shown as "prereqs:" in the list): don't schedule a course before its prerequisites are completed or scheduled in an EARLIER semester of this plan. A course with a "gate:" (GPA gate) requires the student's major GPA to reach that threshold first.
 8. Consider CAREER ALIGNMENT: prioritize courses that build skills for the student's career goals.
@@ -296,7 +309,7 @@ COURSES ALREADY PLANNED — DO NOT INCLUDE (student has already scheduled these)
 UNFILLED DEGREE REQUIREMENTS:
 {buckets_str}
 
-Overall progress: {summary['overall_percentage']}% — {summary['total_credits_completed']}/{summary['total_credits_required']} credits
+Overall progress: {summary['overall_percentage']}% — {summary['total_credits_completed']}/{summary['total_credits_required']} {cm.label}
 
 ALLOWED COURSES (choose ONLY from this list — exact codes/names/credits; "prereqs:" and "gate:" show what must be satisfied first):
 {allowed_str}
@@ -487,11 +500,17 @@ def _sanitize_plan(plan: dict, ctx: dict) -> dict:
 
 def _pad_plan_to_target(plan: dict, ctx: dict) -> dict:
     """Fill spare capacity in the planned semesters with elective placeholders so the
-    plan trends toward the degree credit total (York CS honours = 120). Only fills
-    EXISTING future semesters (never invents terms past graduation); if the target
-    still isn't reachable, adds a warning instead of over-scheduling."""
+    plan trends toward the degree credit total. Only fills EXISTING future semesters
+    (never invents terms past graduation); if the target still isn't reachable, adds
+    a warning instead of over-scheduling.
+
+    Both the target and the size of one placeholder come from the student's credit
+    model, not from York's. A hardcoded 120/3.0 told a Waterloo student their
+    20-unit degree was 100 units short and offered to fill the hole with courses
+    six times the size of any real one."""
     summary = ctx.get("summary") or {}
-    target = float(summary.get("total_credits_required") or 120.0)
+    cm = ctx["credit_model"]
+    target = cm.degree_total
     completed_credits = float(summary.get("total_credits_completed") or 0.0)
 
     semesters = plan.get("semesters", [])
@@ -509,17 +528,17 @@ def _pad_plan_to_target(plan: dict, ctx: dict) -> dict:
         if normalize_course_code(c.course_code) not in plan_codes
     )
     gap = target - (completed_credits + plan_credits + extra_existing)
-    if gap < 3:
+    if gap < cm.unit:
         return plan
 
-    needed = int(gap // 3)
+    needed = cm.courses_for(gap)
     added = 0
     for sem in semesters:
         while len(sem.get("courses", [])) < MAX_COURSES_PER_SEMESTER and added < needed:
             sem.setdefault("courses", []).append({
                 "course_code": "ELECTIVE",
-                "course_name": "Elective (your choice — toward the 120-credit total)",
-                "credits": 3.0,
+                "course_name": f"Elective (your choice — toward the {cm.fmt(target)} total)",
+                "credits": cm.unit,
                 "requirement_bucket": "Electives",
                 "reasoning": "Fills remaining elective credits required to reach the degree total.",
                 "prerequisites": "None",
@@ -529,9 +548,12 @@ def _pad_plan_to_target(plan: dict, ctx: dict) -> dict:
             added += 1
 
     if added < needed:
-        remaining = (needed - added) * 3
+        remaining = (needed - added) * cm.unit
+        # "about" is load-bearing when the total is a structural estimate rather
+        # than a figure read off the student's own checklist.
         plan.setdefault("warnings", []).append(
-            f"About {remaining:.0f} more elective credits are needed to reach {target:.0f} "
+            f"About {cm.fmt(remaining)} of electives are needed to reach "
+            f"{cm.fmt(target)}{' (estimated)' if cm.total_is_estimate else ''} "
             "beyond the scheduled semesters — consider Summer terms or an extra year."
         )
     return plan
@@ -790,7 +812,7 @@ async def generate_semester_plan_stream(
     skip_summers: bool = False,
     skip_winters: bool = False,
 ):
-    """Generate an AI semester plan using true Gemini streaming, yielding SSE events
+    """Generate an AI semester plan using true Groq streaming, yielding SSE events
     as each semester becomes available.
 
     Yields SSE-formatted strings: "data: <json>\\n\\n"
@@ -903,7 +925,16 @@ async def apply_semester_plan(
     """Apply (save) the AI-generated plan — add courses that aren't already in the plan."""
     # Get existing course codes
     courses_result = await db.execute(select(Course).where(Course.user_id == user_id))
-    existing = {c.course_code for c in courses_result.scalars().all()}
+    own_courses = list(courses_result.scalars().all())
+    existing = {c.course_code for c in own_courses}
+
+    # A course arriving without an explicit credit value falls back to the size of
+    # a standard course HERE — 0.5 at Waterloo, 3.0 at York — never to York's.
+    user = await db.scalar(select(User).where(User.id == user_id))
+    default_credits = get_credit_model(
+        user.university if user else None,
+        student_credit_values=[c.credit_value for c in own_courses],
+    ).unit
 
     # Get requirement bucket mapping
     reqs_result = await db.execute(select(DegreeRequirement).where(DegreeRequirement.user_id == user_id))
@@ -934,7 +965,7 @@ async def apply_semester_plan(
                 user_id=user_id,
                 course_code=code,
                 course_name=course_data.get("course_name", ""),
-                credit_value=course_data.get("credits", 3.0),
+                credit_value=course_data.get("credits", default_credits),
                 status=CourseStatus.planned,
                 term=term,
                 requirement_bucket_id=bucket_id,

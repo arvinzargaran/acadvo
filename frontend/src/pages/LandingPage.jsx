@@ -12,6 +12,7 @@ import ThemeToggle from '../components/landing/ThemeToggle';
 import RouteMap from '../components/landing/wayfinding/RouteMap';
 import StationSign from '../components/landing/wayfinding/StationSign';
 import LineRail from '../components/landing/wayfinding/LineRail';
+import Logo from '../components/brand/Logo';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Wayfinding — the landing page.
@@ -96,7 +97,7 @@ function Navbar({ user }) {
         }`}
       >
         <a href="#top" className="flex items-center gap-2.5">
-          <span className="wf-bullet wf-bullet-live" aria-hidden="true">A</span>
+          <Logo size="1.5rem" />
           <span className="wf-signage text-lg" style={{ color: 'var(--wf-ink)' }}>
             acadvo
           </span>
@@ -707,7 +708,7 @@ function Footer({ user }) {
     <footer className="px-6 py-12" style={{ borderTop: '2px solid var(--wf-ink)' }}>
       <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-5">
         <div className="flex items-center gap-2.5">
-          <span className="wf-bullet wf-bullet-live" aria-hidden="true">A</span>
+          <Logo size="1.5rem" />
           <span className="wf-signage text-sm" style={{ color: 'var(--wf-ink)' }}>acadvo</span>
         </div>
         <p className="text-sm" style={{ color: 'var(--wf-muted)' }}>
@@ -722,6 +723,10 @@ function Footer({ user }) {
               <Link to="/register" className="wf-signage text-[10px]" style={{ color: 'var(--wf-muted)' }}>Get started</Link>
             </>
           )}
+          {/* PIPEDA's openness principle asks that the policy be findable
+              without unreasonable effort; the site footer is where people look. */}
+          <Link to="/privacy" className="wf-signage text-[10px]" style={{ color: 'var(--wf-muted)' }}>Privacy</Link>
+          <Link to="/terms" className="wf-signage text-[10px]" style={{ color: 'var(--wf-muted)' }}>Terms</Link>
         </div>
       </div>
     </footer>

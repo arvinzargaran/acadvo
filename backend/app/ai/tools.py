@@ -248,7 +248,14 @@ _FUNCTION_DECLARATIONS = [
 
 
 def _convert_schema(schema: dict) -> dict:
-    """Convert Gemini-style schema (uppercase types) to JSON Schema (lowercase)."""
+    """Convert the uppercase-typed declarations above to JSON Schema (lowercase).
+
+    The declarations are written in the uppercase style Google's function-calling
+    format used, and are left that way deliberately: rewriting sixteen tool
+    schemas by hand to change the case of "OBJECT" is a large diff with a real
+    chance of a typo in a tool the advisor depends on, for no behavioural gain.
+    This function is the whole cost of keeping them.
+    """
     if not schema:
         return {"type": "object", "properties": {}}
     result = {}
@@ -284,7 +291,3 @@ def get_groq_tools() -> list[dict]:
         })
     return tools
 
-
-# Alias for any remaining references
-def get_gemini_tools():
-    return get_groq_tools()

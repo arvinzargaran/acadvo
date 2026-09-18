@@ -8,12 +8,18 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
+# `info={"export": "redact"}` marks a column as a credential rather than
+# personal information. The account export walks the schema, so a column added
+# later joins the export automatically — this marker is how it also joins the
+# redaction list automatically, instead of relying on someone remembering to
+# edit REDACTED_COLUMNS in app/services/data_export.py. Mark the column here,
+# next to the thing that makes it a secret.
 class User(Base):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False, info={"export": "redact"})
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     university: Mapped[str | None] = mapped_column(Text)
     program: Mapped[str | None] = mapped_column(Text)
@@ -31,7 +37,12 @@ class User(Base):
     longest_study_streak: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_study_date: Mapped[date | None] = mapped_column(Date)
     daily_study_goal_minutes: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
-    calendar_token: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    calendar_token: Mapped[str | None] = mapped_column(String(64), unique=True, index=True, info={"export": "redact"})
+    # When this account accepted the terms, and which version it saw. Nullable
+    # on purpose: rows created before this existed never accepted anything, and
+    # backfilling a timestamp would fabricate a legal record.
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    terms_version: Mapped[str | None] = mapped_column(String(32))
     # Per-account login throttling. The IP rate limit on /auth/login does not
     # slow a distributed credential-stuffing run at all (one guess per IP per
     # account); these do. Reset on any successful login.
@@ -60,7 +71,7 @@ class RefreshToken(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    token: Mapped[str] = mapped_column(String(500), unique=True, nullable=False, index=True)
+    token: Mapped[str] = mapped_column(String(500), unique=True, nullable=False, index=True, info={"export": "redact"})
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
@@ -78,7 +89,7 @@ class VerificationToken(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True, info={"export": "redact"})
     purpose: Mapped[str] = mapped_column(String(32), nullable=False)  # 'password_reset' | 'email_verify'
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

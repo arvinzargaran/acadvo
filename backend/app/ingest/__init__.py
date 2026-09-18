@@ -9,6 +9,12 @@ Layout:
   ``prerequisites`` structure (AND across groups, OR within a group).
 - ``sfu`` — adapter for Simon Fraser University's public, keyless course-outlines
   API (the first real source). Add one module per new school.
+- ``waterloo`` — adapter for the University of Waterloo's official Open Data API
+  (v3). Sanctioned and documented like SFU's, but key-gated.
+- ``uoft`` — adapter for the University of Toronto's divisional calendars, via
+  the public Drupal JSON:API each of them exposes. Keyless.
+- ``ubc`` — the University of British Columbia's two calendars, same Drupal
+  JSON:API shape. Keyless; publishes credits, states prerequisites in prose.
 - ``store`` — generalized idempotent upsert into ``CatalogCourse`` with provenance.
 
 Each adapter is a plain function returning ``list[CatalogRow]``; the CLI

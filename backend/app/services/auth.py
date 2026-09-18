@@ -121,6 +121,13 @@ async def create_refresh_token(user_id: uuid.UUID, db: AsyncSession) -> str:
     return token
 
 
+# The terms version recorded against a new account when the client does not name
+# one. Bump it in step with `LAST_UPDATED` in frontend/src/legal/config.js when
+# the terms change materially — that is what makes "which version did they
+# accept" answerable later.
+TERMS_VERSION = "2026-08-23"
+
+
 async def register_user(data: RegisterRequest, db: AsyncSession) -> User:
     result = await db.execute(select(User).where(User.email == data.email))
     if result.scalar_one_or_none() is not None:
@@ -135,6 +142,10 @@ async def register_user(data: RegisterRequest, db: AsyncSession) -> User:
         full_name=data.full_name,
         university=data.university,
         program=data.program,
+        # Stamped server-side. A client-supplied timestamp would be worth less
+        # than no record at all, since the whole point is evidence.
+        terms_accepted_at=datetime.now(timezone.utc),
+        terms_version=data.terms_version or TERMS_VERSION,
     )
     db.add(user)
     await db.commit()

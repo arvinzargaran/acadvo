@@ -1,11 +1,12 @@
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import PageHeader from '../components/ui/PageHeader';
 import client from '../api/client';
-import { deleteAccount, changePassword, getCalendarFeed, regenerateCalendarFeed } from '../api/users';
+import { deleteAccount, changePassword, exportMyData, getCalendarFeed, regenerateCalendarFeed } from '../api/users';
 import { resendVerification } from '../api/auth';
 import { getErrorMessage } from '../utils/errors';
 import { MIN_PASSWORD_LENGTH, PASSWORD_HINT } from '../utils/password';
@@ -27,6 +28,8 @@ export default function SettingsPage() {
   const [saveError, setSaveError] = useState('');
   const [showDelete, setShowDelete] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
 
@@ -123,6 +126,46 @@ export default function SettingsPage() {
       setSaveError(getErrorMessage(err, 'Failed to save changes.'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    setExportError('');
+    let url;
+    try {
+      const { data } = await exportMyData();
+      // Save the blob straight to disk. Rendering it in a tab would leave a page
+      // of the user's grades in browser history and in the back/forward cache,
+      // which is the opposite of what a privacy feature should do.
+      url = URL.createObjectURL(data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `acadvo-export-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      // `responseType: 'blob'` applies to failures too, so a JSON `detail` comes
+      // back as a Blob and getErrorMessage would fall through to the generic
+      // line — turning "you're rate limited, wait 60s" into "try again shortly".
+      let failure = err;
+      const body = err?.response?.data;
+      if (body instanceof Blob) {
+        try {
+          const parsed = JSON.parse(await body.text());
+          failure = { ...err, response: { ...err.response, data: parsed } };
+        } catch {
+          // Not JSON — a proxy's HTML error page. The generic line is right.
+        }
+      }
+      setExportError(getErrorMessage(failure, 'Failed to prepare your data. Try again shortly.'));
+    } finally {
+      // Revoking in the same tick as the click races the download: the browser
+      // resolves the blob URL after the current task, and Firefox and Safari
+      // then find nothing there. Outlive the click rather than free early.
+      if (url) setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setExporting(false);
     }
   };
 
@@ -279,6 +322,31 @@ export default function SettingsPage() {
             </div>
           </div>
         )}
+      </Card>
+
+      <Card>
+        <div className="mb-3">
+          <p className="eyebrow">Your data</p>
+          <h2 className="font-display text-xl mt-1">Privacy and your records</h2>
+        </div>
+        <p className="text-dark-300 text-sm">
+          Download everything acadvo stores about you — profile, courses, grades, assessments,
+          projects, and conversations — as a single JSON file. Your password and calendar token are
+          marked as withheld rather than included, so the file cannot be used to sign in as you.
+        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <Button variant="secondary" loading={exporting} onClick={handleExport}>
+            Download my data
+          </Button>
+          {/* role=alert: the failure appears beside a button the user has just
+              left, so nothing else would announce it. */}
+          {exportError && <span role="alert" className="text-red-400 text-sm">{exportError}</span>}
+        </div>
+        <p className="mt-4 text-sm text-dark-400">
+          <Link to="/privacy" className="underline">Privacy policy</Link>
+          <span className="mx-2" aria-hidden="true">·</span>
+          <Link to="/terms" className="underline">Terms of use</Link>
+        </p>
       </Card>
 
       <Card className="ring-red-500/30">

@@ -84,15 +84,14 @@ def validate_sources(sources: list[dict]) -> list[dict]:
     Raises ``RuleRejected`` when nothing survives. This is the anti-hallucination
     guard with teeth: the caller cannot store a rule whose only support is a
     forum post, and it cannot store one with no support at all, because
-    ``ResearchResult`` only carries URLs the provider reports as actually
-    retrieved.
+    ``ResearchResult`` only carries URLs this app fetched and got a readable page
+    back from.
     """
-    # Known limitation: grounding chunks often arrive as provider redirect URLs
-    # (vertexaisearch.cloud.google.com/...), with the real site only in `domain`
-    # or `title`. Those fields are preferred below for exactly that reason. If a
-    # chunk carries neither, the redirect host is all there is and the denylist
-    # cannot see through it — such a citation is kept but is weak, so the first
-    # extractions for any new university are worth eyeballing.
+    # Sources now carry the real host: pages are fetched directly, so `uri` is
+    # the URL that was requested and `domain` is its hostname, with no provider
+    # redirect in between for the denylist to have to see through. `domain` and
+    # `title` are still preferred over `uri` below so a source built any other
+    # way keeps working.
     kept: list[dict] = []
     for s in sources or []:
         uri = (s.get("uri") or "").strip()
@@ -113,11 +112,17 @@ def validate_sources(sources: list[dict]) -> list[dict]:
 def validate_requirements_url(raw: str) -> str:
     """Check a student-supplied requirements-page URL before it is queued.
 
-    This URL is fetched server-side by the model provider, so it is an SSRF-shaped
-    input even though we never fetch it ourselves: an attacker who can name the
-    target gets to point a request somewhere. Restricting it to public http(s)
-    origins and rejecting credentials, ports, and obvious internal hosts keeps it
-    to what it is meant to be — a link to a university's public calendar page.
+    This URL is fetched server-side by this app, so it is an SSRF input in the
+    plainest sense: an attacker who can name the target gets to point a request
+    somewhere. Restricting it to public http(s) origins and rejecting
+    credentials, ports, and obvious internal hosts keeps it to what it is meant
+    to be — a link to a university's public calendar page.
+
+    This is the string half of the check.
+    ``research_client._resolve_fetch_target`` is the other half, resolving the
+    host and re-checking every redirect hop (port included, since a redirect can
+    change it), which is what catches a public hostname pointing at a private
+    address.
 
     Raises ``RuleRejected`` with a message safe to show the student.
     """
@@ -134,6 +139,19 @@ def validate_requirements_url(raw: str) -> str:
         raise RuleRejected("the URL must start with http:// or https://")
     if parsed.username or parsed.password:
         raise RuleRejected("the URL must not contain credentials")
+    # A university calendar is served on 80 or 443. Any other port on a public
+    # host is a request to speak HTTP at something that is not a web server —
+    # `https://public-host.tld:6379/` reaches a Redis instance whose reply we
+    # would happily hand to the model — and the port survives every hostname
+    # check above it, because the hostname really is public.
+    try:
+        port = parsed.port
+    except ValueError:
+        # urlparse defers parsing the port until it is read, so a non-numeric
+        # one surfaces here rather than at construction.
+        raise RuleRejected("that is not a public web address") from None
+    if port is not None and port not in {80, 443}:
+        raise RuleRejected("the URL must use the standard web ports (80 or 443)")
     host = (parsed.hostname or "").lower()
     if not host or "." not in host:
         raise RuleRejected("that is not a public web address")

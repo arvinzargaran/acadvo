@@ -1,5 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#F1EADB"/>
-  <rect x="2" y="2" width="60" height="60" rx="12" fill="none" stroke="#D9CFBC" stroke-width="2"/>
-  <text x="32" y="46" text-anchor="middle" font-family="Iowan Old Style, Palatino, Georgia, serif" font-weight="700" font-size="42" fill="#F07E00">A</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="34 34 444 444" width="512" height="512" role="img" aria-label="acadvo">
+  <!-- Tab-size variant. Three departures from the primary mark, each one
+       decided by rendering at 16 and 32px rather than by taste:
+
+       1. Two stops, not four. All four turn into a cluster of rings that
+          swallows the letterform; two keep the A primary and the route
+          reading intact along the climbing diagonal.
+       2. Stroke fattened 44 -> 56, holes widened 22 -> 30. The default ratio
+          fills in solid below ~24px.
+       3. viewBox cropped to the mark's own bounds instead of the primary's
+          512 square — the mark only occupies its middle 63%, so this is
+          ~20% more ink per pixel for free.
+
+       Retina tabs rasterise at 32 physical px, which is what makes the stops
+       viable here at all. -->
+  <mask id="acadvo-fav-holes">
+    <rect x="-100" y="-100" width="800" height="800" fill="#fff"/>
+    <circle cx="227" cy="296" r="30" fill="#000"/>
+    <circle cx="139" cy="416" r="30" fill="#000"/>
+  </mask>
+  <g mask="url(#acadvo-fav-holes)" fill="#1B62F0">
+    <g stroke="#1B62F0" stroke-width="56" stroke-linecap="round" fill="none">
+      <path d="M139 416 L373 96"/>
+      <path d="M373 96 L373 416"/>
+      <path d="M227 296 L373 296"/>
+    </g>
+    <circle cx="373" cy="96" r="56"/>
+    <circle cx="227" cy="296" r="56"/>
+    <circle cx="139" cy="416" r="56"/>
+  </g>
 </svg>

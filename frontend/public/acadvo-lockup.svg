@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 260" width="900" height="260" role="img" aria-label="acadvo">
+  <mask id="lk-holes">
+    <rect width="900" height="260" fill="#fff"/>
+    <circle cx="113.5" cy="148" r="11" fill="#000"/>
+    <circle cx="186.5" cy="148" r="11" fill="#000"/>
+    <circle cx="69.5"  cy="208" r="11" fill="#000"/>
+    <circle cx="186.5" cy="208" r="11" fill="#000"/>
+  </mask>
+  <g mask="url(#lk-holes)" fill="#1B62F0" transform="translate(0,0)">
+    <g stroke="#1B62F0" stroke-width="22" stroke-linecap="round" fill="none">
+      <path d="M69.5 208 L186.5 48"/>
+      <path d="M186.5 48 L186.5 208"/>
+      <path d="M113.5 148 L186.5 148"/>
+    </g>
+    <circle cx="186.5" cy="48"  r="22"/>
+    <circle cx="113.5" cy="148" r="22"/>
+    <circle cx="186.5" cy="148" r="22"/>
+    <circle cx="69.5"  cy="208" r="22"/>
+    <circle cx="186.5" cy="208" r="22"/>
+  </g>
+  <text x="256" y="185" fill="#0B0E14"
+        font-family="'Archivo Variable', Archivo, Helvetica, Arial, sans-serif"
+        font-size="132" font-weight="600" letter-spacing="2"
+        style="font-variation-settings:'wdth' 112">acadvo</text>
+</svg>

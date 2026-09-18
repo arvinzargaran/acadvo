@@ -1,7 +1,10 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Request, Response
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from groq import APIConnectionError as GroqConnectionError
@@ -9,7 +12,13 @@ from groq import APIStatusError as GroqAPIStatusError
 from groq import RateLimitError as GroqRateLimitError
 from slowapi.errors import RateLimitExceeded
 
-from app.ai.client import AIDisabledError, AIUnavailableError
+from app.ai.client import (
+    AIDisabledError,
+    AIUnavailableError,
+    is_ai_enabled,
+    quota_snapshot,
+)
+from app.database import get_db
 from app.services.catalog import UniversityNotSetError
 from app.config import settings
 from app.limiter import limiter
@@ -29,6 +38,13 @@ logger = logging.getLogger(__name__)
 # Header the SPA must send on state-changing requests. Not a token — see the
 # csrf_protection middleware below for why presence alone is sufficient.
 CSRF_HEADER = "X-Requested-With"
+
+# Readiness must answer faster than whatever is polling it gives up on. Docker's
+# HEALTHCHECK allows 5s and Caddy's startup gate waits on that, so a readiness
+# probe that blocks on a hung connection until the driver's own timeout would be
+# scored as a *failure* anyway — just several seconds later, and after tying up a
+# pool connection that healthy traffic needed.
+READINESS_TIMEOUT_SECONDS = 3.0
 
 # Ensure our own ("app.*") loggers emit — uvicorn only configures its own loggers,
 # so without this, INFO logs (e.g. dev email links) would be swallowed.
@@ -105,9 +121,45 @@ async def lifespan(app: FastAPI):
                 "RATE_LIMIT_STORAGE_URI is unset — rate limits are per-process and reset on "
                 "restart. Set a shared store (e.g. redis://) when running multiple workers."
             )
+        if is_ai_enabled() and settings.GROQ_MAX_REQUEST_TOKENS <= 0:
+            # Warned, not refused, because 0 is correct on a paid tier and this
+            # cannot tell the tiers apart without a network call at startup.
+            #
+            # Worth a line anyway: Groq applies its tokens-per-minute allowance
+            # PER REQUEST, so on the free tier (8,000) the semester planner and
+            # requirement research are refused outright with a 413 — every time,
+            # not intermittently. The stack comes up green, health checks pass,
+            # and the two most valuable features are dead with only a provider
+            # error in the log to say so.
+            logger.warning(
+                "GROQ_MAX_REQUEST_TOKENS is 0 (no ceiling). Correct on a paid tier; on "
+                "Groq's free tier set it to 8000, or the semester planner and requirement "
+                "research will fail every call with a 413 (request larger than the "
+                "account's per-minute token allowance)."
+            )
+
+    # Seed the catalogs that ship WITH the app.
+    #
+    # These 22 York courses are ground truth transcribed by hand from the
+    # official 2025-2026 BSc checklist, and they lived in source with no caller:
+    # every fresh deployment came up with an empty ``CatalogCourse`` table, so
+    # ``catalog_status.verified`` was False for York and advising quietly fell
+    # back to whatever the student had uploaded. The upsert is idempotent, so
+    # this refreshes on each boot rather than duplicating, and a failure here is
+    # logged rather than fatal — a missing catalog degrades honestly, and is not
+    # a reason to refuse to serve the rest of the app.
+    try:
+        from app.data.york_cs_catalog import seed_catalog
+        from app.database import async_session
+
+        async with async_session() as db:
+            seeded = await seed_catalog(db)
+        logger.info("Seeded %d bundled York catalog courses.", seeded)
+    except Exception:
+        logger.exception("Bundled catalog seed failed; continuing without it.")
 
     # Background worker for program requirement research. A no-op without
-    # GEMINI_API_KEY, in which case the app keeps exactly the behaviour it has
+    # GROQ_API_KEY, in which case the app keeps exactly the behaviour it has
     # today: honest gaps rather than guessed requirements.
     from app.research.runner import start_worker, stop_worker
 
@@ -198,10 +250,16 @@ async def groq_api_status_handler(request: Request, exc: GroqAPIStatusError):
     # Logged with the provider's own status and message because the actionable
     # ones are all operator-side (a retired model id, a revoked key, an
     # exhausted quota) and the user-facing text must not repeat them.
+    # The last observed quota goes on the same line as the error on purpose.
+    # When a free tier's daily allowance runs out, every AI feature starts
+    # failing at once and each one logs a provider error that says nothing about
+    # why. Seeing "remaining_requests: 0, resets in 41m" beside the failure is
+    # the difference between an outage investigation and reading a clock.
     logger.error(
-        "groq api error: status=%s body=%s",
+        "groq api error: status=%s body=%s quota=%s",
         getattr(exc, "status_code", "?"),
         str(exc)[:500],
+        quota_snapshot() or "unknown",
     )
     # A tokens-per-minute cap does NOT always arrive as a 429. Groq answers a
     # single request whose prompt plus max_tokens exceeds the account's TPM with
@@ -342,4 +400,49 @@ app.include_router(suggestions.router, prefix="/suggestions", tags=["suggestions
 
 @app.get("/health")
 async def health():
+    """Liveness: this process is running and can serve a request.
+
+    Deliberately checks nothing else. Liveness answers "should this container be
+    restarted", and restarting the API because Postgres is briefly unreachable
+    replaces one broken dependency with two — the app comes back cold, still
+    unable to reach the database, having dropped every in-flight request.
+    Dependency health is `/health/ready`.
+    """
     return {"status": "ok"}
+
+
+@app.get("/health/ready")
+async def health_ready(response: Response, db: AsyncSession = Depends(get_db)):
+    """Readiness: this process can actually serve *useful* requests.
+
+    Separate from liveness because they answer different questions, and the
+    startup gate needs this one. `/health` returns 200 the instant uvicorn binds
+    a socket — so a container whose database credentials are wrong reports
+    healthy, Caddy's `depends_on: condition: service_healthy` opens the door, and
+    an uptime monitor stays green while every real request 500s. Nothing in the
+    stack notices, because nothing was measuring the thing that broke.
+
+    Fails closed: any error reaching the database is 503, never a 200 with a
+    caveat, because a caveat in a JSON body is not something a load balancer or a
+    HEALTHCHECK reads.
+    """
+    checks: dict[str, str] = {}
+    ok = True
+    try:
+        # `SELECT 1` through the app's own session dependency, not a private
+        # connection: it proves the credentials, the network path and a free
+        # connection from the same pool real requests draw on, which is exactly
+        # the set of things that silently breaks between deploys.
+        async with asyncio.timeout(READINESS_TIMEOUT_SECONDS):
+            await db.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception as exc:  # noqa: BLE001 — any failure means "not ready"
+        ok = False
+        checks["database"] = "unavailable"
+        # The reason goes to the log, never the response: this endpoint is
+        # unauthenticated, and a driver error names hosts, ports and usernames.
+        logger.error("readiness: database check failed: %s", exc)
+
+    if not ok:
+        response.status_code = 503
+    return {"status": "ok" if ok else "degraded", "checks": checks}

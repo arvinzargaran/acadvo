@@ -32,6 +32,9 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from groq import APIConnectionError, APIStatusError
+
+from app.ai.client import AIUnavailableError
 from app.ai.research_client import ResearchDisabledError, is_research_enabled
 from app.config import settings
 from app.database import async_session
@@ -50,6 +53,11 @@ logger = logging.getLogger("acadvo.research.runner")
 # A program whose research has failed this many times is left alone until someone
 # asks for it explicitly. Retrying forever burns the research budget on the same
 # university whose pages we cannot read.
+#
+# Only *permanent* failures count against it — see ``_is_transient``. Spending
+# one of three lifetime attempts on a provider hiccup would let a thirty-second
+# outage lock a program out of requirement rules until a human noticed and
+# clicked refresh, which is a bad trade for an error that fixes itself.
 MAX_ATTEMPTS = 3
 
 # Gap before a failed job is retried, so a transient outage recovers on its own
@@ -174,11 +182,33 @@ async def request_refresh(
     research budget on every request. This is the explicit override for when
     something changed (the calendar was republished, the pages moved), so it
     resets the attempt counter rather than merely re-queueing under the old one.
+
+    The override is for *new information*, though, and it used to reset
+    unconditionally: re-posting the same dead URL refunded the budget every
+    time, which turns MAX_ATTEMPTS into a formality and hands anyone with an
+    account an unbounded way to spend the research budget on a page that cannot
+    be read (the per-user rate limits bound one account, not a program that many
+    accounts can name). So a re-request that presents nothing new — the same
+    URLs, a job already at the ceiling, and its last failure still inside the
+    cooldown — is returned unchanged instead of re-queued. A different URL, or
+    the same one after RETRY_AFTER, still resets as before.
     """
     job = await get_job(db, university, program)
     if job is None:
         job = ProgramResearchJob(university=university, program=program)
         db.add(job)
+    elif job.status == JOB_FAILED and job.attempts >= MAX_ATTEMPTS:
+        same_urls = not urls or list(urls) == list(job.source_urls or [])
+        finished = _aware(job.finished_at)
+        if same_urls and finished and _now() - finished < RETRY_AFTER:
+            logger.info(
+                "research: refresh for %s / %s ignored — retired after %d "
+                "attempts and nothing new was supplied",
+                university,
+                program,
+                job.attempts,
+            )
+            return job
     if urls:
         job.source_urls = list(urls)
     job.status = JOB_PENDING
@@ -270,6 +300,50 @@ async def claim(db: AsyncSession, job: ProgramResearchJob) -> bool:
     return result.rowcount == 1
 
 
+def _is_transient(exc: BaseException) -> bool:
+    """True when trying the exact same job again could plausibly succeed.
+
+    The distinction is not cosmetic: a transient failure is refunded its attempt
+    (see ``MAX_ATTEMPTS``), a permanent one is not. Getting it wrong in either
+    direction is bad — refunding a permanent failure retries a dead URL forever,
+    and charging a transient one locks a whole program out over a blip.
+
+    413 is the entry worth reading twice. Groq answers a request whose prompt
+    plus ``max_tokens`` exceeds the account's per-minute allowance with 413, and
+    it applies that allowance *per request*, so the identical job is the
+    identical size next time and will be refused every time. It looks like a rate
+    limit and is really a configuration error, which is why it is permanent here
+    and why ``_failure_message`` names the setting that fixes it.
+    """
+    if isinstance(exc, AIUnavailableError):
+        # The circuit breaker is open: the provider was failing recently. That is
+        # the definition of "come back shortly".
+        return True
+    if isinstance(exc, APIConnectionError):
+        return True
+    if isinstance(exc, APIStatusError):
+        status = getattr(exc, "status_code", None) or 0
+        return status == 429 or status >= 500
+    return False
+
+
+def _failure_message(exc: BaseException) -> str:
+    """The text written to ``job.last_error``, which the UI shows a student.
+
+    A 413 is the one failure whose fix is entirely operator-side, so it says so
+    explicitly rather than leaving an operator to infer a token ceiling from a
+    stack trace.
+    """
+    if isinstance(exc, APIStatusError) and getattr(exc, "status_code", None) == 413:
+        return (
+            "The AI request was larger than this account's per-request token "
+            "allowance, so it was refused rather than queued. Set "
+            "GROQ_MAX_REQUEST_TOKENS to the account's tokens-per-minute limit "
+            "(8000 on Groq's free tier) and the request will be trimmed to fit."
+        )
+    return f"{type(exc).__name__}: {exc}"[:1000]
+
+
 async def run_job(db: AsyncSession, job: ProgramResearchJob) -> None:
     """Execute one claimed job and record its outcome on the row.
 
@@ -294,10 +368,24 @@ async def run_job(db: AsyncSession, job: ProgramResearchJob) -> None:
         )
     except Exception as exc:  # noqa: BLE001 — the worker must survive any job
         job.status = JOB_FAILED
-        job.last_error = f"{type(exc).__name__}: {exc}"[:1000]
-        logger.exception(
-            "research: crashed for %s / %s", job.university, job.program
-        )
+        job.last_error = _failure_message(exc)
+        if _is_transient(exc):
+            # Refund the attempt taken at claim time. The job still lands in
+            # `failed` so the panel resolves to a real message instead of a
+            # spinner nobody can clear, and `ensure_research` retries it after
+            # RETRY_AFTER — it simply is not one of the three strikes that
+            # retires a program.
+            job.attempts = max(0, job.attempts - 1)
+            logger.warning(
+                "research: transient failure for %s / %s (attempt refunded): %s",
+                job.university,
+                job.program,
+                exc,
+            )
+        else:
+            logger.exception(
+                "research: crashed for %s / %s", job.university, job.program
+            )
     finally:
         job.finished_at = _now()
         await db.commit()
@@ -335,7 +423,7 @@ def start_worker() -> None:
     global _worker_task
     if not settings.PROGRAM_RESEARCH_ENABLED or not is_research_enabled():
         logger.info(
-            "research: worker not started (GEMINI_API_KEY unset or research disabled)"
+            "research: worker not started (GROQ_API_KEY unset or research disabled)"
         )
         return
     if _worker_task is not None and not _worker_task.done():

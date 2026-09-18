@@ -5,12 +5,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.client import acomplete, get_groq_client, completion_text, json_kwargs
+from app.ai.sanitize import sanitize
 from app.config import settings
 from app.models.course_recommendation import CourseRecommendation
 from app.models.degree import Course, DegreeRequirement, CourseStatus
 from app.models.user import User
 from app.models.career import CareerTarget
-from app.services.catalog import get_catalog, require_university
+from app.services.catalog import Catalog, get_catalog, require_university
 from app.services.degree import get_degree_summary
 from app.services.document_parser import normalize_course_code, subject_of
 from app.services.eligibility import (
@@ -172,7 +173,7 @@ async def search_courses(
     # Validation below still runs against the full catalog, so this can only
     # narrow the candidates, never widen what is accepted.
     allowed_str = format_allowed_courses(
-        shortlist_for_query(undergraduate_only(catalog), query), ordered=True
+        shortlist_for_query(undergraduate_only(catalog, ctx["university"]), query), ordered=True
     )
 
     client = get_groq_client()
@@ -373,7 +374,7 @@ async def generate_recommendations(
     )
     allowed_str = format_allowed_courses(
         shortlist_for_student(
-            undergraduate_only(catalog),
+            undergraduate_only(catalog, ctx.get("university")),
             _student_subjects(ctx),
             program=ctx.get("program"),
             exclude=settled_norm,
@@ -391,10 +392,39 @@ async def generate_recommendations(
     # message wins when there is genuinely nothing at all.
     student_codes = {normalize_course_code(c) for c in ctx["existing_course_codes"]}
     if not catalog_covers_student(catalog, student_codes):
-        raise NoCoverageError(ctx["university"], _subjects(student_codes))
+        # Serve them from their OWN checklist rather than refusing outright.
+        #
+        # This used to raise, and the reasoning was sound as far as it went:
+        # ingesting a Computer Science checklist marks *York* as catalogued when
+        # what York actually has is EECS and MATH, and a Psychology student must
+        # not start being recommended EECS courses. But refusing was a blunt
+        # answer to that. A student at a university with NO seeded catalog is
+        # already served from their own uploaded checklist — that is the
+        # sanctioned uncatalogued path — and this student is in exactly that
+        # position, plus a seeded catalog that happens to be about someone else's
+        # program. Refusing left every York student outside Computer Science
+        # unable to get a recommendation at all.
+        #
+        # Dropping the out-of-subject seeded rows keeps the protection the guard
+        # was actually for (no EECS course can be offered, because no EECS course
+        # is in the pool any more) while leaving the student their own courses to
+        # be advised from. Strictly better than all-or-nothing in both
+        # directions: they get advice, and it cannot be about a foreign subject.
+        covered = _subjects(student_codes)
+        catalog = Catalog({
+            code: entry
+            for code, entry in catalog.items()
+            if entry.get("source") != "catalog" or subject_of(code) in covered
+        })
+        if not _has_allowed_courses(catalog, settled_norm):
+            raise NoCoverageError(ctx["university"], covered)
 
+    # Sanitized like the chat context, and for the same reason: `bucket_name`
+    # is populated by the document parser from an uploaded degree checklist, so
+    # it is attacker-supplied text on a path nobody thinks of as untrusted. A
+    # newline here would let a crafted PDF add its own line to the prompt.
     buckets_info = "\n".join(
-        f"- {b['bucket_name']}: {b['credits_completed']}/{b['credits_required']} credits completed ({b['credits_remaining']} remaining)"
+        f"- {sanitize(b['bucket_name'])}: {b['credits_completed']}/{b['credits_required']} credits completed ({b['credits_remaining']} remaining)"
         for b in ctx["degree_summary"]["buckets"]
         if b["credits_remaining"] > 0
     )
@@ -403,21 +433,21 @@ async def generate_recommendations(
     # model not to recommend the same courses the ALLOWED list just offered it.
     settled_list = ", ".join(sorted(ctx["settled_course_codes"])) or "none"
     targets_info = ", ".join(
-        f"{t['company']} ({t['role']})" for t in ctx["career_targets"]
+        f"{sanitize(t['company'])} ({sanitize(t['role'])})" for t in ctx["career_targets"]
     ) or "none specified"
 
     bucket_filter = ""
     if requirement_bucket:
-        bucket_filter = f"\nFocus specifically on courses that satisfy the '{requirement_bucket}' requirement bucket."
+        bucket_filter = f"\nFocus specifically on courses that satisfy the '{sanitize(requirement_bucket)}' requirement bucket."
 
     client = get_groq_client()
 
-    prompt = f"""You are a university academic advisor. Recommend 4-6 courses for a {ctx['program']} student at {ctx['university']} to take in {semester}.
+    prompt = f"""You are a university academic advisor. Recommend 4-6 courses for a {sanitize(ctx['program'])} student at {sanitize(ctx['university'])} to take in {sanitize(semester)}.
 
 STUDENT PROFILE:
-- University: {ctx['university']}
-- Program: {ctx['program']}
-- Career target: {ctx['career_target']}
+- University: {sanitize(ctx['university'])}
+- Program: {sanitize(ctx['program'])}
+- Career target: {sanitize(ctx['career_target'])}
 - Target companies/roles: {targets_info}
 - Expected graduation: {ctx['graduation_year']}
 
@@ -427,7 +457,7 @@ DEGREE GAPS (requirement buckets with remaining credits):
 COURSES ALREADY DONE, IN PROGRESS, OR SCHEDULED (do NOT recommend these):
 {settled_list}
 
-GOAL: {goal}
+GOAL: {sanitize(goal)}
 {bucket_filter}
 
 ALLOWED COURSES (you MUST choose ONLY from this list — use these EXACT codes, names and credits; do NOT invent or recall courses from memory):

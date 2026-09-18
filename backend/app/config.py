@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # Catalog ingestion. Waterloo's Open Data API is official and documented but
+    # key-gated; registration confirms an email address, so it is the operator's
+    # to obtain. Unset simply means Waterloo has no seeded catalog, which the app
+    # already degrades honestly for.
+    WATERLOO_API_KEY: str = ""
+
     GROQ_API_KEY: str = ""
     # Model IDs are not stable identifiers — Groq retires hosted models, and a
     # retired one comes back as a 404 on *every* AI call, which reads in the app
@@ -61,6 +67,21 @@ class Settings(BaseSettings):
     # a real cost; it is still strictly better than no plan at all, and paid
     # deployments leave this at 0 and are unaffected.
     GROQ_MAX_REQUEST_TOKENS: int = 0
+
+    # Wall-clock ceiling on a single model call, and how many times the SDK may
+    # retry one on its own.
+    #
+    # The SDK's defaults (60s, 2 retries) compound with the app's own retry loop
+    # in ai/conversation.py, which already makes AI_MAX_ATTEMPTS=3 attempts with
+    # backoff: 3 x 3 attempts x 60s is roughly nine minutes for ONE model call,
+    # and a chat turn makes up to MAX_TOOL_ROUNDS=10 of them. Each of those calls
+    # holds a thread from anyio's 40-slot pool, so a slow (not even failed) Groq
+    # is enough to exhaust the pool and stall every request the worker is
+    # serving, AI or not. Retrying belongs in one place — ours, which knows what
+    # is transient and logs it — so the SDK's own retries are turned off here.
+    GROQ_TIMEOUT_SECONDS: float = 30.0
+    GROQ_SDK_MAX_RETRIES: int = 0
+
     # Reasoning effort for the calls whose output is STRUCTURED JSON, as opposed
     # to the chat loop (which keeps the model's default and benefits from it).
     #
@@ -74,30 +95,38 @@ class Settings(BaseSettings):
     # Empty string omits the parameter for models that reject it.
     GROQ_JSON_REASONING_EFFORT: str = "low"
 
-    # ── Gemini: the *research* provider, alongside Groq, not replacing it ──
+    # ── Research: reading a university's own public pages ──────────────
     #
-    # Groq stays the workhorse for document parsing and catalog-grounded
-    # recommendations: those are cheap, high-volume, and already grounded in data
-    # we hold, so a model that cannot browse is exactly right for them.
-    #
-    # Gemini is added for the one thing Groq cannot do at all: read a
-    # university's live public pages. Requirement rules ("6.00 credits in
+    # The requirement rules a student is graded against ("6.00 credits in
     # AP/HUMA") exist only as prose on calendar pages that differ per school, so
-    # extracting them needs server-side retrieval with citations. Note the
-    # OpenAI-compatible shims do NOT expose Search grounding — the native SDK is
-    # required for the single feature this provider is here for.
+    # extracting them means reading the page rather than querying anything.
     #
-    # Leave GEMINI_API_KEY empty and the research path is simply disabled: the
-    # app keeps the honest behaviour it has today (NoCatalogError / NoCoverageError,
-    # unlabelled buckets) rather than guessing.
-    GEMINI_API_KEY: str = ""
-    # An alias, not a pinned version, and deliberately so: `gemini-2.5-flash` was
-    # the default here until Google retired it for new projects mid-development,
-    # which surfaces as a 404 on the first real call rather than at startup. An
-    # alias that tracks the current Flash absorbs that churn. The tradeoff is that
-    # the model can change under us — pin an explicit version in .env if a
-    # research prompt ever needs to be reproducible.
-    GEMINI_MODEL: str = "gemini-flash-latest"
+    # This ran on Gemini's Search grounding until the app was moved onto the Groq
+    # free tier exclusively. Nothing was lost: the page is now fetched by
+    # `app.ai.research_client.fetch_page` over plain HTTPS — free, unmetered, and
+    # a stronger citation than a provider's word for it, because the HTTP status
+    # is ours to check. The model only ever sees text we retrieved.
+    #
+    # Same model as everything else, deliberately. `groq/compound` looks like the
+    # better choice — it advertises a 70,000 token-per-minute limit against
+    # gpt-oss-120b's 8,000, which would fit a whole calendar page. It is not: the
+    # compound systems are routers that delegate to the ordinary models, so a
+    # compound request is refused on *their* limits. Measured, not assumed — the
+    # same request 413s under compound while its own rate-limit headers still
+    # report 64,000 tokens remaining. There is no extra headroom to be had, so
+    # the page is trimmed to fit instead (see RESEARCH_MAX_PAGE_CHARS).
+    RESEARCH_MODEL: str = "openai/gpt-oss-120b"
+    # Used only when RESEARCH_USE_SEARCH_GROUNDING is on: the system that has
+    # server-side web search. A compound system is required here — it is the only
+    # thing on Groq that can retrieve at all — and the ceiling above is exactly
+    # why searching does not fit the free tier.
+    RESEARCH_SEARCH_MODEL: str = "groq/compound"
+    # Hard cap on how much of one page's text is put in front of the model, used
+    # when GROQ_MAX_REQUEST_TOKENS leaves more room than this. Whole calendar
+    # pages run to hundreds of kilobytes of navigation; the requirements
+    # themselves are a few thousand characters, and everything past that is the
+    # site's chrome repeated.
+    RESEARCH_MAX_PAGE_CHARS: int = 48_000
 
     # How long an extracted requirement rule is trusted before it is re-checked.
     # University calendars are republished annually, so a rule older than this is
@@ -108,17 +137,18 @@ class Settings(BaseSettings):
     # the research functions directly rather than through the queue.
     PROGRAM_RESEARCH_ENABLED: bool = True
 
-    # Let the model FIND pages itself (Google Search grounding) instead of only
-    # reading URLs it is given.
+    # Let the model FIND requirement pages itself (Groq compound's server-side
+    # web search) instead of only reading URLs it is given.
     #
-    # Off by default because it is billed. On Gemini's free tier every grounded
-    # call returns 429 RESOURCE_EXHAUSTED regardless of model or rate-limit
-    # headroom — Search grounding is metered per query, separately from RPM/TPM.
-    # The `url_context` path used instead costs nothing and reads the same pages;
-    # the only thing lost is automatic discovery, which is why a program's
-    # requirements URL is supplied rather than searched for.
+    # Off by default, and no longer for a billing reason — nothing in this app is
+    # billed. A search pulls several whole pages into a single request, and Groq
+    # applies its per-minute token allowance per REQUEST: on the free tier that
+    # is a flat 413, every time, regardless of how long you wait. Direct fetching
+    # of a supplied URL costs no tokens at all and reads the same page; the only
+    # thing lost is automatic discovery, which is why a program's requirements
+    # URL is supplied rather than searched for.
     #
-    # Turn this on only with billing enabled on the Google Cloud project.
+    # Turn this on only on an account with the per-request headroom for it.
     RESEARCH_USE_SEARCH_GROUNDING: bool = False
 
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"

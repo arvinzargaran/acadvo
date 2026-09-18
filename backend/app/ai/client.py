@@ -1,4 +1,5 @@
 import functools
+import logging
 import re
 import time
 from threading import Lock
@@ -6,6 +7,8 @@ from threading import Lock
 import anyio.to_thread
 from groq import APIConnectionError, APIStatusError, Groq
 from app.config import settings
+
+logger = logging.getLogger("acadvo.ai.client")
 
 _client = None
 
@@ -89,7 +92,14 @@ def get_groq_client() -> Groq:
     if _breaker.is_open():
         raise AIUnavailableError()
     if _client is None:
-        _client = Groq(api_key=settings.GROQ_API_KEY)
+        # Bounded on purpose — see GROQ_TIMEOUT_SECONDS in config.py. Left at
+        # the SDK defaults, one model call can occupy a worker thread for
+        # minutes, and the pool is what every other request is waiting on.
+        _client = Groq(
+            api_key=settings.GROQ_API_KEY,
+            timeout=settings.GROQ_TIMEOUT_SECONDS,
+            max_retries=settings.GROQ_SDK_MAX_RETRIES,
+        )
     return _client
 
 
@@ -110,9 +120,100 @@ async def run_blocking(fn, *args, **kwargs):
     return await anyio.to_thread.run_sync(functools.partial(fn, *args, **kwargs))
 
 
+# ── Provider quota, observed rather than guessed ─────────────────────
+#
+# Groq reports the account's remaining allowance on the headers of every
+# response, and until now the app threw them away. That is the one number an
+# operator needs and cannot get any other way: on a free tier the daily request
+# allowance runs out mid-afternoon, every AI feature starts failing at once, and
+# the logs show a pile of provider errors with no indication that the cause is a
+# quota that resets on its own. Reading the headers turns "the AI is broken" into
+# "the AI is rate-limited until 14:32", which is a different operational
+# response.
+#
+# Deliberately not a metrics backend: one process-local snapshot, refreshed on
+# every call, exposed on an ops endpoint and warned about once it gets low.
+
+_QUOTA_WARN_FRACTION = 0.1
+
+_quota_lock = Lock()
+_quota: dict[str, object] = {}
+
+
+def _parse_ratelimit_number(raw: str | None) -> int | None:
+    """Groq sends plain integers for the counts. Anything else reads as absent."""
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def record_quota(headers, model: str = "") -> None:
+    """Store the rate-limit headers from one response, and warn when low.
+
+    Never raises: quota bookkeeping must not be able to fail a request that the
+    provider already answered successfully.
+    """
+    try:
+        snapshot = {
+            "model": model,
+            "observed_at": time.time(),
+            "limit_requests": _parse_ratelimit_number(headers.get("x-ratelimit-limit-requests")),
+            "remaining_requests": _parse_ratelimit_number(headers.get("x-ratelimit-remaining-requests")),
+            "limit_tokens": _parse_ratelimit_number(headers.get("x-ratelimit-limit-tokens")),
+            "remaining_tokens": _parse_ratelimit_number(headers.get("x-ratelimit-remaining-tokens")),
+            "reset_requests": headers.get("x-ratelimit-reset-requests"),
+            "reset_tokens": headers.get("x-ratelimit-reset-tokens"),
+        }
+    except Exception:  # noqa: BLE001 — a header shape we did not expect
+        return
+
+    with _quota_lock:
+        _quota.update(snapshot)
+
+    limit = snapshot["limit_requests"]
+    remaining = snapshot["remaining_requests"]
+    if limit and remaining is not None and remaining <= limit * _QUOTA_WARN_FRACTION:
+        # Requests, not tokens: the token allowance refills every minute and
+        # dipping into it is normal, while the request allowance on a free tier
+        # is a daily budget that does not come back until it resets.
+        logger.warning(
+            "groq quota low: %s of %s requests left for %s (resets in %s)",
+            remaining,
+            limit,
+            model or "the account",
+            snapshot["reset_requests"] or "?",
+        )
+
+
+def quota_snapshot() -> dict:
+    """The last observed provider allowance, for the ops endpoint."""
+    with _quota_lock:
+        return dict(_quota)
+
+
 async def acomplete(client: Groq, **kwargs):
-    """Non-blocking ``client.chat.completions.create(...)``. See run_blocking."""
-    return await run_blocking(client.chat.completions.create, **kwargs)
+    """Non-blocking ``client.chat.completions.create(...)``. See run_blocking.
+
+    Routed through ``with_raw_response`` when the client exposes it, so the
+    provider's rate-limit headers can be recorded on the way past. ``.parse()``
+    returns exactly what the plain call would — a ``ChatCompletion``, or a
+    ``Stream`` when ``stream=True`` — so no caller can tell the difference.
+
+    Falls back to the plain call when the client has no raw-response surface.
+    Quota capture is telemetry: it must never decide whether a request can be
+    made. Requiring it would also make ``acomplete`` reject any stand-in client
+    that implements the one method it actually calls, which is a lot of coupling
+    to buy a header.
+    """
+    completions = client.chat.completions
+    raw_api = getattr(completions, "with_raw_response", None)
+    if raw_api is None:
+        return await run_blocking(completions.create, **kwargs)
+
+    raw = await run_blocking(raw_api.create, **kwargs)
+    record_quota(getattr(raw, "headers", {}) or {}, kwargs.get("model", ""))
+    return raw.parse()
 
 
 
@@ -160,6 +261,19 @@ def clean_model_text(raw: str | None, *, strip_fence: bool = True) -> str:
         if text.rstrip().endswith("```"):
             text = text.rstrip()[:-3]
     return text.strip()
+
+
+def finish_reason(response) -> str:
+    """Why the model stopped: "stop", "length", "content_filter", or "" if unknown.
+
+    Worth checking before parsing: a completion cut off at the token ceiling is
+    truncated JSON, and reporting that as "the AI response was not valid JSON"
+    sends the user off to fix a document that was never the problem.
+    """
+    try:
+        return response.choices[0].finish_reason or ""
+    except (AttributeError, IndexError, TypeError):
+        return ""
 
 
 def completion_text(response, *, strip_fence: bool = True) -> str:
@@ -249,6 +363,3 @@ def record_ai_success() -> None:
 def record_ai_failure() -> None:
     _breaker.record_failure()
 
-
-# Keep old name as alias for any remaining references
-get_gemini_client = get_groq_client

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import get_current_user, require_verified_email
-from app.limiter import limiter
+from app.limiter import CRUD_WRITE_LIMIT, limiter, user_or_ip_key
 from app.models.user import User
 from app.schemas.degree import (
     AssessmentCreate,
@@ -32,8 +32,14 @@ from app.schemas.degree import (
     ParsedDegreeDocument,
 )
 from app.services import degree as degree_service
-from app.services.catalog import get_catalog_status
-from app.services.document_parser import UnreadableDocumentError, parse_degree_document
+from app.services.catalog import enrich_parsed_with_catalog, get_catalog_status
+from groq import RateLimitError as GroqRateLimitError
+
+from app.services.document_parser import (
+    ModelOutputError,
+    UnreadableDocumentError,
+    parse_degree_document,
+)
 from app.services.uploads import UploadTooComplexError, validate_upload
 
 router = APIRouter()
@@ -59,11 +65,12 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
     response_model=ParsedDegreeDocument,
     dependencies=[Depends(require_verified_email)],
 )
-@limiter.limit("5/hour")
+@limiter.limit("5/hour", key_func=user_or_ip_key)
 async def parse_document(
     request: Request,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     if file.size is not None and file.size > MAX_FILE_SIZE:
         raise HTTPException(status_code=413, detail="File too large. Maximum size is 10 MB.")
@@ -79,6 +86,25 @@ async def parse_document(
         result = await parse_degree_document(file_bytes, mime_type)
     except UploadTooComplexError as e:
         raise HTTPException(status_code=413, detail=str(e))
+    except ModelOutputError as e:
+        # The model's answer was unusable. Distinct from a bad document, and the
+        # message says which — telling a student to re-export a file that parsed
+        # fine wastes their time and hides a problem on our side.
+        raise HTTPException(status_code=502, detail=str(e))
+    except GroqRateLimitError:
+        # Typed, not sniffed out of the message text below. On Groq's free tier a
+        # single checklist parse reserves ~7,000 of the 8,000 tokens-per-minute
+        # allowance (the ceiling counts `max_tokens`, not tokens actually used),
+        # so two uploads in the same minute — or one upload alongside any other
+        # AI call — is enough to hit this. It is a quota problem, and saying so
+        # is the difference between "wait a minute" and "your file is broken".
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                "Acadvo's AI quota is momentarily used up. Wait about a minute and "
+                "upload again — nothing is wrong with your file."
+            ),
+        )
     except UnreadableDocumentError as e:
         # This one carries an instruction the student can act on, so it is not
         # flattened into the generic message below.
@@ -95,6 +121,16 @@ async def parse_document(
             status_code=422,
             detail="Could not parse document. Please ensure it is a valid degree checklist or transcript.",
         )
+
+    # Fill blank titles and missing credits from the seeded catalog. On the real
+    # York checklist a third of the courses arrive as bare codes inside a bucket's
+    # options list, with no title at all; the catalog has the real names.
+    try:
+        result = await enrich_parsed_with_catalog(result, current_user.university, db)
+    except Exception:
+        # Enrichment is a nicety. A parse that succeeded must not be lost because
+        # the catalog lookup failed.
+        logger.exception("Catalog enrichment failed; returning the raw parse.")
 
     return result
 
@@ -178,7 +214,9 @@ async def list_requirements(
 
 
 @router.post("/requirements", response_model=DegreeRequirementResponse, status_code=201)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def create_requirement(
+    request: Request,
     data: DegreeRequirementCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -187,7 +225,9 @@ async def create_requirement(
 
 
 @router.put("/requirements/{requirement_id}", response_model=DegreeRequirementResponse)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def update_requirement(
+    request: Request,
     requirement_id: uuid.UUID,
     data: DegreeRequirementUpdate,
     current_user: User = Depends(get_current_user),
@@ -207,7 +247,9 @@ async def list_courses(
 
 
 @router.post("/courses", response_model=CourseResponse, status_code=201)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def create_course(
+    request: Request,
     data: CourseCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -216,7 +258,9 @@ async def create_course(
 
 
 @router.put("/courses/{course_id}", response_model=CourseResponse)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def update_course(
+    request: Request,
     course_id: uuid.UUID,
     data: CourseUpdate,
     current_user: User = Depends(get_current_user),
@@ -226,7 +270,9 @@ async def update_course(
 
 
 @router.delete("/courses/{course_id}", status_code=204)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def delete_course(
+    request: Request,
     course_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -246,7 +292,9 @@ async def list_assessments(
 
 
 @router.post("/courses/{course_id}/assessments", response_model=AssessmentResponse, status_code=201)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def create_assessment(
+    request: Request,
     course_id: uuid.UUID,
     data: AssessmentCreate,
     current_user: User = Depends(get_current_user),
@@ -256,7 +304,9 @@ async def create_assessment(
 
 
 @router.put("/assessments/{assessment_id}", response_model=AssessmentResponse)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def update_assessment(
+    request: Request,
     assessment_id: uuid.UUID,
     data: AssessmentUpdate,
     current_user: User = Depends(get_current_user),
@@ -266,7 +316,9 @@ async def update_assessment(
 
 
 @router.delete("/assessments/{assessment_id}", status_code=204)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def delete_assessment(
+    request: Request,
     assessment_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -290,7 +342,7 @@ async def grade_projection(
     response_model=list[AssessmentResponse],
     dependencies=[Depends(require_verified_email)],
 )
-@limiter.limit("10/hour")
+@limiter.limit("10/hour", key_func=user_or_ip_key)
 async def parse_syllabus(
     request: Request,
     course_id: uuid.UUID,
@@ -333,7 +385,9 @@ async def list_credentials(
 
 
 @router.post("/credentials", response_model=CredentialResponse, status_code=201)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def create_credential(
+    request: Request,
     data: CredentialCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -342,7 +396,9 @@ async def create_credential(
 
 
 @router.put("/credentials/{credential_id}", response_model=CredentialResponse)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def update_credential(
+    request: Request,
     credential_id: uuid.UUID,
     data: CredentialUpdate,
     current_user: User = Depends(get_current_user),
@@ -352,7 +408,9 @@ async def update_credential(
 
 
 @router.delete("/credentials/{credential_id}", status_code=204)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def delete_credential(
+    request: Request,
     credential_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

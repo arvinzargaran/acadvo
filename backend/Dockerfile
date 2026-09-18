@@ -28,5 +28,10 @@ USER app
 
 EXPOSE 8000
 
+# Readiness, not liveness. `/health` answers 200 as soon as uvicorn binds a
+# socket, so gating on it marks a container healthy while its database
+# credentials are wrong — and Caddy's `depends_on: condition: service_healthy`
+# then opens the door to traffic that can only 500. `/health/ready` runs a real
+# query, so this gate means what the compose file says it means.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4).status == 200 else 1)"

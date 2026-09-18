@@ -1,10 +1,11 @@
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import get_current_user
+from app.limiter import CRUD_WRITE_LIMIT, limiter, user_or_ip_key
 from app.models.user import User
 from app.schemas.project import (
     MilestoneCreate,
@@ -28,7 +29,9 @@ async def list_projects(
 
 
 @router.post("", response_model=ProjectResponse, status_code=201)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def create_project(
+    request: Request,
     data: ProjectCreate,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -46,7 +49,9 @@ async def get_project(
 
 
 @router.put("/{project_id}", response_model=ProjectResponse)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def update_project(
+    request: Request,
     project_id: uuid.UUID,
     data: ProjectUpdate,
     user: User = Depends(get_current_user),
@@ -56,7 +61,9 @@ async def update_project(
 
 
 @router.delete("/{project_id}", status_code=204)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def delete_project(
+    request: Request,
     project_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -65,7 +72,9 @@ async def delete_project(
 
 
 @router.post("/{project_id}/milestones", response_model=MilestoneResponse, status_code=201)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def create_milestone(
+    request: Request,
     project_id: uuid.UUID,
     data: MilestoneCreate,
     user: User = Depends(get_current_user),
@@ -75,7 +84,9 @@ async def create_milestone(
 
 
 @router.put("/milestones/{milestone_id}", response_model=MilestoneResponse)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def update_milestone(
+    request: Request,
     milestone_id: uuid.UUID,
     data: MilestoneUpdate,
     user: User = Depends(get_current_user),
@@ -85,7 +96,9 @@ async def update_milestone(
 
 
 @router.delete("/milestones/{milestone_id}", status_code=204)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def delete_milestone(
+    request: Request,
     milestone_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

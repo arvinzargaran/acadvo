@@ -80,3 +80,65 @@ async def test_ingested_catalog_is_verified_and_readable(db):
 
 async def test_empty_rows_noop(db):
     assert await upsert_catalog(db, UNI, [], source="unit_test") == 0
+
+
+async def test_upsert_handles_a_university_sized_catalog(db):
+    """A whole university must survive the write, not just the fetch.
+
+    One INSERT carries a bind parameter per column per row, and both backends cap
+    that (PostgreSQL at 32,767). SFU's 1,853 courses came to 20,383 parameters and
+    fit; the first larger ingest — UofT across three campuses — crawled every page
+    correctly and then lost the lot on a single oversized statement.
+    """
+    rows = [
+        CatalogRow(
+            course_code=f"BIG {i:05d}",
+            course_name=f"Course {i}",
+            credits=0.5,
+            subject_faculty="BIG",
+            prerequisites=[],
+            gpa_gate=None,
+        )
+        for i in range(5000)
+    ]
+    n = await upsert_catalog(db, UNI, rows, source="scale_test")
+    assert n == 5000
+
+    total = await db.scalar(
+        select(func.count()).select_from(CatalogCourse).where(
+            CatalogCourse.university == UNI, CatalogCourse.source == "scale_test"
+        )
+    )
+    assert total == 5000
+
+    # And it is still idempotent at that size.
+    await upsert_catalog(db, UNI, rows, source="scale_test")
+    total = await db.scalar(
+        select(func.count()).select_from(CatalogCourse).where(
+            CatalogCourse.university == UNI, CatalogCourse.source == "scale_test"
+        )
+    )
+    assert total == 5000
+
+
+async def test_duplicate_codes_in_one_batch_do_not_abort_the_ingest(db):
+    """A repeated course must not take the whole university down with it."""
+    rows = _rows() + [
+        CatalogRow(
+            course_code="CMPT 225",
+            course_name="Data Structures (second listing)",
+            credits=3.0,
+            subject_faculty="CMPT",
+            prerequisites=[],
+            gpa_gate=None,
+        )
+    ]
+    n = await upsert_catalog(db, UNI, rows, source="dupe_test")
+    assert n == 2, "duplicate should collapse, not multiply"
+    row = await db.scalar(
+        select(CatalogCourse).where(
+            CatalogCourse.university == UNI, CatalogCourse.course_code == "CMPT 225"
+        )
+    )
+    # Last writer wins, deterministically.
+    assert row.course_name == "Data Structures (second listing)"

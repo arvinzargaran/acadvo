@@ -8,10 +8,18 @@
       name="description"
       content="Plan your degree, track your GPA, and manage co-op applications in one place. An AI academic advisor built for Canadian university students."
     />
-    <meta name="theme-color" content="#F1EADB" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- The cream here was left over from a retired palette; the browser
+         chrome should match the wayfinding canvas / ink in each theme. -->
+    <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0B0E14" media="(prefers-color-scheme: dark)" />
+    <!-- ?v= is load-bearing: browsers cache favicons far past normal asset
+         TTLs, and the service worker precaches svg/png. Bump it whenever the
+         mark changes or the old icon will stick in tabs indefinitely. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3" />
+    <!-- Fallback for browsers that don't render SVG favicons. -->
+    <link rel="alternate icon" type="image/png" href="/pwa-192x192.png?v=3" />
     <!-- iOS / Apple PWA support -->
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=3" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />

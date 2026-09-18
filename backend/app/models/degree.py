@@ -63,7 +63,9 @@ class Course(Base):
     term: Mapped[str | None] = mapped_column(String(50))
     grade: Mapped[str | None] = mapped_column(String(10))
     requirement_bucket_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("degree_requirements.id", ondelete="SET NULL"), index=True)
-    credential_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("credentials.id", ondelete="SET NULL"))
+    # Indexed like its sibling above: it is an ON DELETE SET NULL foreign key,
+    # so deleting one credential otherwise scans every course row in the table.
+    credential_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("credentials.id", ondelete="SET NULL"), index=True)
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)

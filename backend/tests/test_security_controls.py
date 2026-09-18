@@ -82,6 +82,7 @@ async def test_csrf_header_allows_the_request(auth_client):
 )
 async def test_register_rejects_weak_password(client, password):
     resp = await client.post("/auth/register", json={
+        "accepted_terms": True,
         "email": f"weak-{uuid.uuid4().hex[:8]}@example.com",
         "password": password,
         "full_name": "Weak Password",
@@ -91,6 +92,7 @@ async def test_register_rejects_weak_password(client, password):
 
 async def test_register_accepts_a_reasonable_passphrase(client):
     resp = await client.post("/auth/register", json={
+        "accepted_terms": True,
         "email": "strongpw@example.com",
         "password": "correct horse battery staple",
         "full_name": "Strong Password",
@@ -265,6 +267,7 @@ def test_scrub_path_leaves_ordinary_paths_alone():
 
 async def test_auth_cookies_are_httponly_and_scoped(client):
     resp = await client.post("/auth/register", json={
+        "accepted_terms": True,
         "email": "cookieflags@example.com",
         "password": "correct horse battery staple",
         "full_name": "Cookie Flags",

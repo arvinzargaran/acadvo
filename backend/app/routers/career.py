@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import get_current_user, require_verified_email
-from app.limiter import limiter
+from app.limiter import CRUD_WRITE_LIMIT, limiter, user_or_ip_key
 from app.models.user import User
 from app.schemas.career import (
     CareerTargetCreate,
@@ -34,7 +34,9 @@ async def list_career_targets(
 
 
 @router.post("/targets", response_model=CareerTargetResponse, status_code=201)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def create_career_target(
+    request: Request,
     data: CareerTargetCreate,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -43,7 +45,9 @@ async def create_career_target(
 
 
 @router.put("/targets/{target_id}", response_model=CareerTargetResponse)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def update_career_target(
+    request: Request,
     target_id: uuid.UUID,
     data: CareerTargetUpdate,
     user: User = Depends(get_current_user),
@@ -53,7 +57,9 @@ async def update_career_target(
 
 
 @router.delete("/targets/{target_id}", status_code=204)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def delete_career_target(
+    request: Request,
     target_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -73,7 +79,9 @@ async def list_timeline_events(
 
 
 @router.post("/timeline", response_model=TimelineEventResponse, status_code=201)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def create_timeline_event(
+    request: Request,
     data: TimelineEventCreate,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -82,7 +90,9 @@ async def create_timeline_event(
 
 
 @router.delete("/timeline/{event_id}", status_code=204)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def delete_timeline_event(
+    request: Request,
     event_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -121,7 +131,7 @@ Be specific and actionable. Reference actual content from the document."""
 
 # AI-backed and costly: requires a verified email (see main.py).
 @router.post("/review-resume", dependencies=[Depends(require_verified_email)])
-@limiter.limit("5/hour")
+@limiter.limit("5/hour", key_func=user_or_ip_key)
 async def review_resume(
     request: Request,
     file: UploadFile = File(...),

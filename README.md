@@ -2,7 +2,7 @@
 
 **AI-powered academic and career advisor for Canadian university students.**
 
-Acadvo helps students plan their degrees strategically, track career targets, build portfolios, and prepare for internships — with an AI advisor that doesn't just chat, but takes real actions. It knows your courses, grades, degree requirements, projects, and career goals, and uses that full picture to add courses to your plan, flag risks, build timelines, and generate semester-by-semester schedules aligned with your university's course catalog. Built specifically for the Canadian university system, with GPA and grading-scale support for 16 Canadian universities. Verified course catalogs (with prerequisites and enrolment gates) currently ship for Simon Fraser University — **1,853 courses across all 77 undergraduate subjects**, ingested from SFU's official course-outlines API — and York (Computer Science, hand-authored), with more schools expandable through the same pipeline.
+Acadvo helps students plan their degrees strategically, track career targets, build portfolios, and prepare for internships — with an AI advisor that doesn't just chat, but takes real actions. It knows your courses, grades, degree requirements, projects, and career goals, and uses that full picture to add courses to your plan, flag risks, build timelines, and generate semester-by-semester schedules aligned with your university's course catalog. Built specifically for the Canadian university system, with GPA and grading-scale support for 16 Canadian universities. Verified course catalogs — with prerequisites and enrolment gates — are ingested from each university's own catalog source: **York** (public Kuali catalog API, whole university), the **University of Toronto** (public calendar JSON:API, all three campuses), **Simon Fraser** (public course-outlines API), and the **University of Waterloo** (official Open Data API — needs a free `WATERLOO_API_KEY`). Adapters never fabricate a course: a prerequisite is only ever a code the university itself published, and a school with no catalog degrades honestly instead of guessing. Every source was assessed before it was used, and the ones deliberately *not* used are recorded with the reason — see `backend/app/ingest/SOURCES.md`.
 
 ## Tech Stack
 
@@ -10,7 +10,7 @@ Acadvo helps students plan their degrees strategically, track career targets, bu
 |-------|-----------|
 | **Backend** | Python 3.12, FastAPI, SQLAlchemy 2.0 (async), PostgreSQL, Alembic |
 | **Frontend** | React 19, Vite, Tailwind CSS, React Router v8, Axios |
-| **AI** | Groq — `openai/gpt-oss-120b` function calling (15 tools), `qwen/qwen3.6-27b` for image input, PDF/spreadsheet text extraction. Gemini (optional) — Google Search grounding, used only to research a program's requirement rules from the university's own public pages |
+| **AI** | Groq only, and it runs on the free tier — `openai/gpt-oss-120b` function calling (16 tools), `qwen/qwen3.6-27b` for image input, PDF/spreadsheet text extraction. Requirement-rule research reads the university's own page directly over HTTPS and gives the model only that text, so nothing here is metered beyond the Groq call itself |
 | **Auth** | JWT (HS256) with refresh token rotation, bcrypt password hashing |
 | **Infrastructure** | Docker Compose (PostgreSQL + backend + frontend) |
 
@@ -25,7 +25,7 @@ Acadvo helps students plan their degrees strategically, track career targets, bu
 - **Requirement rules, researched once per program** — electives and gen-ed are not lists, they are rules ("6.00 credits in AP/HUMA, minus these exclusions"), and hundreds of courses satisfy them. One student links their program's official requirements page; an AI run reads it and extracts those rules; the result is cached with its source URLs and reused for every student after them. A course is only ever said to satisfy a requirement alongside the page it was read from and a label saying whether the university stated it or Acadvo concluded it. Unresearched programs say so rather than guessing.
 
 ### AI Advisor
-- 15 function-calling tools: add courses, create projects, flag risks, generate timelines, update profiles, search course catalogs, build semester plans, add degree requirements
+- 16 function-calling tools: add courses, create projects, flag risks, generate timelines, update profiles, search course catalogs, build semester plans, add degree requirements
 - Multi-turn tool execution loop (up to 10 rounds per message) — the AI calls tools, reads results, and decides what to do next
 - Full context on every call: degree progress, projects, career targets, upcoming deadlines
 - Floating chat widget available on every page + dedicated full-screen career advisor
@@ -47,12 +47,13 @@ Acadvo helps students plan their degrees strategically, track career targets, bu
 - All data persisted server-side per user (problems, stats, and weekly goal), with automatic one-time migration of any legacy localStorage goal
 
 ### Dashboard
-- 10 widgets: GPA tracker, credit progress, deadline countdown, portfolio score, smart alerts, weekly AI check-in, current courses, active milestones, upcoming deadlines, AI suggestions
+- 14 widgets: GPA tracker, GPA calculator, credit progress, deadline countdown, portfolio score, readiness score, smart alerts, smart insights feed, next actions, getting started, weekly AI check-in, current courses, active milestones, upcoming deadlines
 - Smart alerts analyze your data client-side: at-risk requirement buckets, overdue milestones, missing career targets
 - AI-generated weekly progress summary
 
 ### Platform
 - **Installable PWA** — web app manifest, offline app-shell caching via service worker (Workbox), iOS home-screen support; API routes are explicitly excluded from caching so authenticated data is never served stale
+- **Privacy self-serve** — `/privacy` and `/terms` (linked from the landing footer, the registration consent tick, and Settings), plus Settings → *Download my data* (`GET /users/me/export`) and password-confirmed account deletion. See [Privacy and the legal pages](#privacy-and-the-legal-pages)
 - **Observability** — structured JSON logging with per-request `X-Request-ID` tracing, AI tool-loop instrumentation (model-call latency, rounds, per-tool durations, token usage — never user content), and optional Sentry error tracking gated behind `SENTRY_DSN`
 
 ### Onboarding
@@ -82,7 +83,7 @@ Acadvo helps students plan their degrees strategically, track career targets, bu
 
 3. Edit `.env` and set your values:
    - `GROQ_API_KEY` — your Groq API key (required for all AI features)
-   - `GEMINI_API_KEY` — optional; enables requirement-rule research ([get one here](https://aistudio.google.com/apikey)). Leave it empty and the app simply will not say which degree requirement a course satisfies, which is the honest answer when it has not read your university's rules.
+   - `GROQ_MAX_REQUEST_TOKENS` — set to `8000` on Groq's free tier. Groq applies its per-minute token limit *per request*, so the semester planner and requirement research are refused outright (413) without this; with it they trim to fit.
    - `JWT_SECRET_KEY` — change to a random 32+ character string (run `openssl rand -hex 32`)
    - Other defaults work for local development
 
@@ -129,17 +130,41 @@ Make sure PostgreSQL is running and `DATABASE_URL` in `.env` points to it.
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Access token TTL | No | `30` |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | Refresh token TTL | No | `7` |
 | `GROQ_API_KEY` | Groq API key | Yes (for AI) | — |
-| `GEMINI_API_KEY` | Gemini key — requirement-rule research only; empty disables that path | No | (empty) |
-| `GEMINI_MODEL` | Model used for research | No | `gemini-flash-latest` |
-| `RESEARCH_USE_SEARCH_GROUNDING` | Let the model find requirement pages itself. **Billed** — 429s on the free tier | No | `False` |
+| `GROQ_MAX_REQUEST_TOKENS` | Ceiling on prompt + completion for one request; `8000` on the free tier, `0` (none) on a paid one | No | `0` |
+| `GROQ_TIMEOUT_SECONDS` | Wall-clock ceiling on one model call. Raise only if a legitimate call is being cut off — the app retries transient failures itself, and an unbounded call holds a worker thread the rest of the API is queueing for | No | `30.0` |
+| `GROQ_SDK_MAX_RETRIES` | Retries the Groq SDK performs on top of the app's own retry loop. `0` on purpose: two retry layers multiply (3 × 3 attempts × the timeout above) | No | `0` |
+| `GROQ_MODEL` | Chat/JSON model id. Groq retires ids — check `/v1/models` before blaming the app | No | `openai/gpt-oss-120b` |
+| `GROQ_VISION_MODEL` | Model used for image input (scanned checklists, résumé images) | No | `qwen/qwen3.6-27b` |
+| `GROQ_VISION_REASONING_EFFORT` | `none` or `default` for Qwen; empty for a model that rejects the parameter | No | `none` |
+| `GROQ_JSON_REASONING_EFFORT` | Reasoning effort on JSON-producing calls (plans, search, parsing). Empty omits the parameter | No | `low` |
+| `RESEARCH_MODEL` | Model used to extract requirement rules from a fetched page | No | `openai/gpt-oss-120b` |
+| `RESEARCH_SEARCH_MODEL` | Model used when search grounding is on (a Groq compound system, for its larger per-request token ceiling) | No | `groq/compound` |
+| `RESEARCH_MAX_PAGE_CHARS` | Cap on how much of a fetched page is shown to the model | No | `48000` |
+| `RESEARCH_USE_SEARCH_GROUNDING` | Let the model find requirement pages itself, instead of reading a supplied URL. Free, but a search exceeds the free tier's per-request token limit (413) | No | `False` |
 | `REQUIREMENT_RULE_TTL_DAYS` | Days before a researched rule is re-checked in the background | No | `180` |
 | `PROGRAM_RESEARCH_ENABLED` | Master switch for the background research worker | No | `True` |
 | `COOKIE_SECURE` | Send auth cookies only over HTTPS — set `True` in production | No | `False` |
+| `COOKIE_SAMESITE` | `lax` or `strict`. `none` is refused at startup when `DEBUG=False` | No | `lax` |
+| `RATE_LIMIT_STORAGE_URI` | Shared store for rate limits. Empty = in-memory, which counts per worker; the prod compose sets Redis | No | (empty) |
+| `FRONTEND_URL` | Base URL used to build verification and password-reset links | No | `http://localhost:5173` |
+| `PUBLIC_API_URL` | Public origin of the API, used to build the `.ics` calendar feed URL | No | `http://localhost:8000` |
+| `SMTP_HOST` | Mail server. Empty logs emails instead of sending them — load-bearing in production, see below | No | (empty) |
+| `SMTP_PORT` | Mail server port | No | `587` |
+| `SMTP_USER` / `SMTP_PASSWORD` | Mail server credentials | No | (empty) |
+| `SMTP_STARTTLS` | Upgrade the SMTP connection with STARTTLS | No | `True` |
+| `ALLOW_NO_SMTP` | Boot with no mail server configured. Without it the app refuses to start in production, because verification links would only reach the log | No | `False` |
+| `EMAIL_FROM` / `EMAIL_FROM_NAME` | Sender address and display name | No | `no-reply@acadvo.app` / `Acadvo` |
+| `PASSWORD_RESET_TOKEN_EXPIRE_MINUTES` | Lifetime of a password-reset link | No | `60` |
+| `EMAIL_VERIFY_TOKEN_EXPIRE_MINUTES` | Lifetime of an email-verification link | No | `1440` |
 | `DEBUG` | Enables `/docs` and `/redoc` | No | `False` |
 | `SENTRY_DSN` | Sentry error tracking — disabled when empty | No | (empty) |
 | `SENTRY_TRACES_SAMPLE_RATE` | Sentry performance tracing sample rate | No | `0.0` |
 | `BEHIND_PROXY` | Trust `X-Forwarded-For` for rate limiting (set when behind nginx/Caddy) | No | `False` |
+| `FORWARDED_ALLOW_IPS` | IPs/CIDRs uvicorn trusts proxy headers from (never `*`). Compose-only; passed to uvicorn, not read by `config.py` | No | `172.28.0.0/16` (prod compose) |
+| `APP_DOMAIN` / `API_DOMAIN` | Public host names Caddy issues certificates for. Compose-only | Yes (prod) | — |
+| `ACME_EMAIL` | Contact address for Let's Encrypt. Compose-only | Yes (prod) | — |
 | `VITE_API_URL` | Backend URL for frontend | No | `http://localhost:8000` |
+| `VITE_PRIVACY_EMAIL` | Contact published in the privacy policy and terms for access requests and complaints. Must be a mailbox that exists | No | `privacy@<served domain>` |
 | `CORS_ORIGINS` | Allowed CORS origins (comma-separated) | No | `http://localhost:5173,http://localhost:3000` |
 
 ## API Overview
@@ -147,7 +172,7 @@ Make sure PostgreSQL is running and `DATABASE_URL` in `.env` points to it.
 | Group | Prefix | Key Endpoints |
 |-------|--------|---------------|
 | **Auth** | `/auth` | Register, login, refresh token, logout, forgot/reset password, verify email |
-| **Users** | `/users` | Get/update profile, delete account |
+| **Users** | `/users` | Get/update profile, change password, **`GET /users/me/export`** — a JSON copy of everything stored about the account (PIPEDA Principle 9; `no-store` attachment, rate-limited 5/hour, credentials marked withheld), delete account |
 | **Degree** | `/degree` | Course CRUD, requirement buckets, degree summary, document parsing |
 | **Projects** | `/projects` | Project CRUD, milestone management |
 | **Career** | `/career` | Career targets, timeline events, resume AI review |
@@ -155,6 +180,9 @@ Make sure PostgreSQL is running and `DATABASE_URL` in `.env` points to it.
 | **Conversations** | `/conversations` | Create/list conversations, send messages (triggers AI + tool execution) |
 | **Dashboard** | `/dashboard` | AI weekly summary |
 | **Suggestions** | `/suggestions` | List/accept/dismiss AI-generated suggestions |
+| **Study** | `/study` | Study session logging and stats |
+| **DSA** | `/dsa` | Practice-problem tracker, per-user stats and weekly goal |
+| **Calendar** | `/calendar` | Token-authenticated `.ics` feed of courses and deadlines |
 
 Full interactive docs at `http://localhost:8000/docs` when the backend is running.
 
@@ -174,33 +202,33 @@ acadvo/
 │       ├── config.py             # Settings from environment
 │       ├── database.py           # Async SQLAlchemy engine + sessions
 │       ├── deps.py               # Auth dependency (JWT extraction)
-│       ├── models/               # 8 ORM models (user, degree, project, career, etc.)
+│       ├── models/               # 12 ORM models (user, degree, project, career, etc.)
 │       ├── schemas/              # Pydantic request/response schemas
-│       ├── routers/              # 9 API routers, 40+ endpoints
+│       ├── routers/              # 12 API routers, 85 endpoints
 │       ├── services/             # Business logic (degree, career, auth, etc.)
 │       └── ai/
 │           ├── client.py         # Groq client configuration
-│           ├── research_client.py # Gemini + Google Search grounding (citations required)
+│           ├── research_client.py # Fetches university pages; citations required
 │           ├── context.py        # System prompt builder (full user context)
-│           ├── tools.py          # 15 tool declarations for function calling
+│           ├── tools.py          # 16 tool declarations for function calling
 │           ├── tool_executor.py  # Tool dispatch + handlers (DB operations)
 │           └── conversation.py   # Multi-turn conversation loop with tool execution
 └── frontend/
     ├── Dockerfile
     ├── package.json
     └── src/
-        ├── App.jsx               # Routing (10 routes)
-        ├── api/                  # 10 API client modules (Axios)
+        ├── App.jsx               # Routing (18 routes, incl. /privacy and /terms)
+        ├── api/                  # 13 API client modules (Axios)
         ├── context/              # Auth + Theme providers
         ├── hooks/                # useConversation (chat state management)
         ├── data/                 # Static data (universities, programs)
-        ├── pages/                # 10 page components
+        ├── pages/                # 19 page components (incl. PrivacyPage, TermsPage)
         └── components/
             ├── layout/           # AppShell, Sidebar, Topbar, ProtectedRoute
             ├── chat/             # ChatWidget, MessageBubble, ChatInput, ToolCallResult
             ├── degree/           # CourseTable, SemesterPlanner, PrerequisiteFlow, FileUploadZone, etc.
             ├── career/           # CareerAIChat, ApplicationPipeline, ResumeReview, etc.
-            ├── dashboard/        # 10 dashboard widgets
+            ├── dashboard/        # 14 dashboard components
             ├── projects/         # ProjectCard, MilestoneList, MilestoneItem
             ├── tour/             # OnboardingTour
             └── ui/               # Button, Card, Input, Select, Modal, Badge, ProgressBar, ProgressRing, Spinner
@@ -243,6 +271,11 @@ The backend refuses to boot when `DEBUG=False` and any of these is wrong:
 | Every Groq call and every PDF/XLSX parse runs off the event loop | `ai/client.py` (`run_blocking`) | One user's chat or upload stalling the whole worker (trivially triggered DoS) |
 | A course-code shortlist, not the whole catalog, is put in each prompt — ranked, budget-capped, and still validated against the full catalog afterwards | `services/eligibility.py` | A real catalog (1,195 courses ≈ 23k tokens) exceeding the per-request token limit, breaking every AI feature as coverage grows |
 | Graduate-level courses filtered out of undergraduate advising | `services/eligibility.py` | An ingested catalog is the whole calendar; the planner scheduled an 800-level seminar into a first-year term |
+| Graduate numbering is per-university, not a width heuristic | `data/program_config.py` | UofT and TMU number graduate courses with four digits and undergraduate ones with three — the inverse of York — so the general rule read every UofT graduate course as undergraduate |
+| Credits per course derived from the student's own checklist, never assumed | `data/credit_models.py` | A Waterloo course is 0.5 units and a UofT one 0.5 credits; York's hardcoded 3.0/120 told a Waterloo student their 20-unit degree was 100 units short |
+| Only the "Prerequisite:" clause of a course description is parsed | `ingest/york.py` | York names other courses in passing ("continues the theme introduced in EECS 1020"); parsing the whole description turns an aside into a hard prerequisite and blocks a student from a course they can take |
+| Catalog lookups tolerate a missing faculty prefix | `services/catalog.py` | `HH/PSYC 1010` and `PSYC 1010` were two different courses: the student's own course counted twice, and recommendations dropped as "fabricated" |
+| The catalog upsert is chunked | `ingest/store.py` | One INSERT per row-batch exceeds PostgreSQL's 32,767 bind parameters; a whole-university ingest crawled every page and then lost all of it on the write |
 | York faculty prefixes applied only to York-shaped (four-digit) course numbers | `services/document_parser.py` | `get_catalog` normalises every row, so SFU's `MATH 100` was stored and shown to Simon Fraser students as York's `SC/MATH 100` |
 | The elective tail of a shortlist is spread across subjects, not alphabetical | `services/eligibility.py` | A French major whose every elective was a biology course, because "B" sorts early and the list was truncated |
 | ICS feed escapes carriage returns and folds lines to 75 octets | `services/calendar.py` | Calendar injection through a course name into an unauthenticated feed; over-long lines rejected by stricter clients |
@@ -265,8 +298,45 @@ The backend refuses to boot when `DEBUG=False` and any of these is wrong:
 - **Check the Groq model ids before you trust an AI failure.** Groq retires hosted models, and a retired id fails *every* AI call with a 404 — one dead config value reads as "the whole product is broken". The Llama models this app was built against are already gone. `curl https://api.groq.com/openai/v1/models -H "Authorization: Bearer $GROQ_API_KEY"` lists what is actually servable; the defaults live in `backend/app/config.py`.
 - **On Groq's free tier, set `GROQ_MAX_REQUEST_TOKENS` to 8000.** Groq's per-minute token limit is also a *per-request* limit: one call whose prompt plus `max_tokens` exceeds it is refused with a 413 every time, no matter how long you wait. The semester planner asks for an 8,192-token completion, so on the free tier it fails 100% of the time. With this set, the planner trims its completion budget to fit and produces a real plan; if a plan still runs long, the terms that completed are returned with a warning rather than discarded. A paid tier leaves this at 0.
 - **Schedule `scripts/backup-db.sh` and copy the dumps off the host.** Nothing in the stack backs the database up on its own. See [Backups, restore, and rollback](#backups-restore-and-rollback).
-- **Point an uptime monitor at both hostnames.** `https://$API_DOMAIN/health` returns `{"status":"ok"}` without touching the database or requiring auth; `https://$APP_DOMAIN/` serves the app shell. Container-level `HEALTHCHECK`s restart a wedged service but tell you nothing when the whole host is gone.
+- **Point an uptime monitor at `/health/ready`, not `/health`.** The two answer different questions and only one of them is useful to a monitor. `https://$API_DOMAIN/health` is *liveness* — it returns `{"status":"ok"}` as soon as uvicorn binds a socket, without touching the database, because restarting the API when Postgres blips would replace one broken dependency with two. `https://$API_DOMAIN/health/ready` is *readiness*: it runs a real query and returns **503** when the database is unreachable, so a container with bad credentials cannot report healthy while every request 500s. Both are unauthenticated and neither leaks connection details. The container `HEALTHCHECK` and Caddy's startup gate use the readiness endpoint. Also watch `https://$APP_DOMAIN/` for the app shell — container health tells you nothing when the whole host is gone.
+- **Watch for `groq quota low` in the logs.** Every AI response carries the account's remaining allowance, and the app records it (`app/ai/client.record_quota`). When the request budget drops below 10% it logs a warning, and any provider error logs the last known quota beside it. This is the difference between an outage investigation and reading a clock: on a free tier the daily allowance runs out mid-afternoon, *every* AI feature starts failing at once, and nothing else in the system says why.
+- **Run `scripts/loadtest.py` before a launch and after any query change.** Everything else in this repo tests one request at a time; an N+1 is invisible until the tenth concurrent user and obvious at the hundredth. It logs in once (so it measures the read paths rather than bcrypt and the login rate limiter), warms the pool, then fans out. Non-zero exit on any failure or p95 breach, so it can gate a release:
+
+  ```bash
+  python scripts/loadtest.py --url https://$API_DOMAIN \
+      --email you@example.com --password '...' --users 100 --requests 3
+  ```
 - **Set `SENTRY_DSN`.** Without it a 500 in production exists only in `docker compose logs`, which nobody is reading at the moment it happens. Sentry runs with `send_default_pii=False` and the feed token scrubbed.
+
+- **Create the privacy mailbox before the first real user.** `/privacy` and `/terms` name `VITE_PRIVACY_EMAIL` (defaulting to `privacy@<your domain>`) as the contact for access requests, corrections, and complaints. PIPEDA's openness principle requires that contact to be reachable — a policy pointing at a mailbox that bounces is worse than no policy, because it is a published commitment nobody can act on.
+
+### Privacy and the legal pages
+
+The app holds student transcripts, grades, and advisor conversations — personal
+information under PIPEDA, which brings three obligations the code has to satisfy,
+not just the policy text:
+
+| Obligation | Where it lives | What would break it |
+|---|---|---|
+| **Openness** (Principle 8) — publish what is collected, why, who else sees it | `frontend/src/pages/PrivacyPage.jsx`, linked from the landing footer, the registration form, and Settings | Changing what is collected without changing the page. Every claim on it — "uploads are never stored", "no analytics", "Groq does not train on it" — was checked against the code and is only true while that stays true |
+| **Individual access** (Principle 9) — give the person a copy on request | `GET /users/me/export`, Settings → *Download my data* | A new user-owned table that the export misses. `tests/test_data_export.py` derives the expected tables from the foreign keys, so a new one joins the export or fails the suite |
+| **Consent** (Principle 3) — meaningful, informed, age-appropriate | The tick box on `RegisterPage.jsx`, which states the age minimum and the US transfer | Turning it into a passive "by continuing you agree" line, which is not consent the OPC recognises |
+
+The operator identity, governing province, minimum age, and hosting region are
+facts asserted on both pages and are set in one place —
+`frontend/src/legal/config.js`. **If the hosting region changes, that file is
+wrong and the privacy policy is making a false statement about where data lives.**
+
+Deliberately absent: a cookie banner (the only cookies are the two session
+cookies, which are strictly necessary), an arbitration clause, and a
+class-action waiver.
+
+### Security policy and incident response
+
+Who owns security, how to report a vulnerability, what to revoke first when
+something leaks, and the PIPEDA notification duty: **[SECURITY.md](SECURITY.md)**.
+It ships with the owner deliberately unassigned — fill that in before launch, or
+the plan is one nobody executes.
 
 ### Backups, restore, and rollback
 
@@ -346,6 +416,6 @@ cd frontend && npm run audit
 
 - **Streaming chat responses** — The advisor chat waits for the full tool-execution loop before responding; streaming tokens (like the semester planner's SSE endpoint already does) would improve perceived latency.
 
-- **Hard email-gating & 2FA** — Email verification exists but is soft (login isn't blocked on unverified accounts). Gating sensitive actions on verification, plus optional TOTP 2FA, would harden account security further.
+- **2FA** — Every AI endpoint already requires a verified address (`require_verified_email`, see [Email verification](#email-verification)); login itself is deliberately not blocked. Optional TOTP 2FA is the remaining account-security step.
 
 - **Background email delivery** — Emails send inline (in a worker thread). A queue (e.g. Celery/RQ) would decouple delivery from the request and add retries.

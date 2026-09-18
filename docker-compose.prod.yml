@@ -123,6 +123,14 @@ services:
     tmpfs:
       # pdfplumber/openpyxl and Starlette's multipart spooling need scratch space.
       - /tmp:size=256m
+    # NOTE ON EGRESS: this service makes outbound HTTPS requests to two kinds of
+    # host — api.groq.com, and the university pages a student links for
+    # requirement research. If you put an egress firewall in front of this stack,
+    # allowing only Groq will leave requirement research permanently failing with
+    # "the page could not be retrieved". The fetch is guarded at both ends
+    # (public http(s) origins only, and a DNS-resolving check on every redirect
+    # hop that rejects private addresses), so it cannot be steered at your
+    # internal network.
     depends_on:
       db:
         condition: service_healthy

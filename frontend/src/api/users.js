@@ -27,3 +27,14 @@ export function getCalendarFeed() {
 export function regenerateCalendarFeed() {
   return client.post('/users/me/calendar-feed/regenerate');
 }
+
+/**
+ * Everything the server holds about this account, as a file.
+ *
+ * `responseType: 'blob'` matters: the response carries a Content-Disposition
+ * attachment header, and parsing it as JSON first would hold a copy of every
+ * grade the account has in a JS string for no reason.
+ */
+export function exportMyData() {
+  return client.get('/users/me/export', { responseType: 'blob' });
+}

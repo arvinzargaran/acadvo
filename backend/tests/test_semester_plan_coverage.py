@@ -23,6 +23,7 @@ from app.models.degree import Course, CourseStatus, DegreeRequirement
 from app.models.user import User
 from app.services.auth import hash_password
 from app.services.document_parser import normalize_course_code as _n
+from app.data.credit_models import get_credit_model
 from app.services.semester_plan import (
     MAX_COURSES_PER_SEMESTER,
     PlanGenerationError,
@@ -244,6 +245,7 @@ def test_pad_fills_electives_toward_credit_total():
         "summary": {"total_credits_required": 120.0, "total_credits_completed": 90.0},
         "planned": [],
         "in_progress": [],
+        "credit_model": get_credit_model("York University", total_credits_required=120.0),
     }
     plan = {"semesters": [
         {"term": "Fall 2026", "courses": [{"course_code": "CS100", "credits": 3.0}]},
@@ -253,7 +255,7 @@ def test_pad_fills_electives_toward_credit_total():
     placeholders = [c for s in out["semesters"] for c in s["courses"] if c.get("is_placeholder")]
     # 90 + 3 = 93, gap 27 → 9 electives; 2 sems × 5 slots − 1 taken = 9 slots.
     assert len(placeholders) == 9
-    assert not any("more elective credits" in w for w in out.get("warnings", []))
+    assert not any("of electives are needed" in w for w in out.get("warnings", []))
 
 
 def test_pad_warns_when_target_unreachable():
@@ -261,10 +263,11 @@ def test_pad_warns_when_target_unreachable():
         "summary": {"total_credits_required": 120.0, "total_credits_completed": 0.0},
         "planned": [],
         "in_progress": [],
+        "credit_model": get_credit_model("York University", total_credits_required=120.0),
     }
     plan = {"semesters": [{"term": "Fall 2026", "courses": []}]}
     out = _pad_plan_to_target(plan, ctx)
-    assert any("more elective credits" in w for w in out["warnings"])
+    assert any("of electives are needed" in w for w in out["warnings"])
 
 
 def test_pad_no_op_when_gap_small_and_counts_existing_credits():
@@ -272,6 +275,7 @@ def test_pad_no_op_when_gap_small_and_counts_existing_credits():
         "summary": {"total_credits_required": 120.0, "total_credits_completed": 100.0},
         "planned": [types.SimpleNamespace(credit_value=9.0, course_code="X100")],
         "in_progress": [types.SimpleNamespace(credit_value=9.0, course_code="X200")],
+        "credit_model": get_credit_model("York University", total_credits_required=120.0),
     }
     plan = {"semesters": [{"term": "Fall 2026", "courses": [{"course_code": "CS100", "credits": 3.0}]}]}
     out = _pad_plan_to_target(plan, ctx)

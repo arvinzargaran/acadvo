@@ -8,6 +8,7 @@ import AuthLayout from '../components/layout/AuthLayout';
 import { CANADIAN_UNIVERSITIES } from '../data/universities';
 import { PROGRAMS } from '../data/programs';
 import { MIN_PASSWORD_LENGTH, PASSWORD_HINT } from '../utils/password';
+import { MINIMUM_AGE, TERMS_VERSION } from '../legal/config';
 
 export default function RegisterPage() {
   const { register, user } = useAuth();
@@ -20,6 +21,7 @@ export default function RegisterPage() {
     program: '',
   });
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -31,6 +33,12 @@ export default function RegisterPage() {
     setError('');
     if (form.password !== confirmPassword) {
       setError('Passwords do not match.');
+      return;
+    }
+    if (!acceptedTerms) {
+      // `required` on the input already blocks submission in a browser; this
+      // catches a programmatic submit and keeps the rule in one readable place.
+      setError('Please confirm your age and accept the terms to continue.');
       return;
     }
     // The searchable university field only commits a value when an option is
@@ -46,7 +54,9 @@ export default function RegisterPage() {
     }
     setLoading(true);
     try {
-      await register(form);
+      // The server requires the acceptance and stamps its own timestamp; the
+      // version travels with it so the record says WHAT was accepted.
+      await register({ ...form, accepted_terms: true, terms_version: TERMS_VERSION });
       navigate('/onboarding', { replace: true });
     } catch (err) {
       const detail = err.response?.data?.detail;
@@ -63,8 +73,12 @@ export default function RegisterPage() {
   return (
     <AuthLayout eyebrow="Start your plan" title="Create account" wide>
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Announced, not just shown: every failure this form can produce — a
+            password mismatch, an unticked consent box, a rejected email — writes
+            here and nowhere else, so without a live region a screen-reader user
+            submits and is told nothing at all. */}
         {error && (
-          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-600 dark:text-red-400">
+          <div role="alert" className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-600 dark:text-red-400">
             {error}
           </div>
         )}
@@ -123,6 +137,33 @@ export default function RegisterPage() {
           onChange={update('program')}
           placeholder="Select your program"
         />
+
+        {/* An explicit tick, not a "by clicking Create account you agree" line.
+            Consent is only meaningful if the person took an action knowing what
+            it meant, and the age declaration has to be made rather than assumed
+            — the OPC treats an unstated age as no consent at all. */}
+        <div className="flex items-start gap-2.5">
+          <input
+            id="accept-terms"
+            type="checkbox"
+            required
+            checked={acceptedTerms}
+            onChange={(e) => setAcceptedTerms(e.target.checked)}
+            className="mt-1 h-4 w-4 shrink-0 accent-accent-500"
+          />
+          <label htmlFor="accept-terms" className="text-sm text-dark-400 leading-relaxed">
+            I am {MINIMUM_AGE} or older, and I agree to the{' '}
+            <Link to="/terms" className="text-primary-600 dark:text-primary-400 hover:underline">
+              Terms of Use
+            </Link>{' '}
+            and the{' '}
+            <Link to="/privacy" className="text-primary-600 dark:text-primary-400 hover:underline">
+              Privacy Policy
+            </Link>
+            , including that AI features send parts of my academic record to a provider in the
+            United States.
+          </label>
+        </div>
 
         <Button type="submit" variant="accent" loading={loading} className="w-full">
           Create account

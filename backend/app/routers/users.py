@@ -1,12 +1,13 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.limiter import limiter
+from app.limiter import CRUD_WRITE_LIMIT, limiter, user_or_ip_key
 from app.models.user import User
 from app.schemas.auth import DeleteAccountRequest
 from app.schemas.password import Password
@@ -22,6 +23,7 @@ from app.services.auth import (
     verify_password,
 )
 from app.services.career import get_readiness_score
+from app.services.data_export import export_user_data
 from app.services.schedule import get_all_user_events
 
 
@@ -63,7 +65,11 @@ async def get_calendar_feed(
 
 
 @router.post("/me/calendar-feed/regenerate")
+# Each call mints a new 192-bit token row and invalidates the subscriber's
+# existing feed; nobody rotates a calendar link more than a handful of times.
+@limiter.limit("20/hour", key_func=user_or_ip_key)
 async def regenerate_calendar_feed(
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -72,7 +78,7 @@ async def regenerate_calendar_feed(
 
 
 @router.put("/me", response_model=UserResponse)
-@limiter.limit("30/hour")
+@limiter.limit("30/hour", key_func=user_or_ip_key)
 async def update_me(
     request: Request,
     data: UserUpdate,
@@ -83,7 +89,7 @@ async def update_me(
 
 
 @router.post("/me/password", status_code=status.HTTP_204_NO_CONTENT)
-@limiter.limit("10/hour")
+@limiter.limit("10/hour", key_func=user_or_ip_key)
 async def change_password(
     request: Request,
     data: PasswordChange,
@@ -107,8 +113,36 @@ async def change_password(
     return response
 
 
+@router.get("/me/export")
+@limiter.limit("5/hour", key_func=user_or_ip_key)
+async def export_me(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """A copy of everything stored about this account (PIPEDA Principle 9).
+
+    Sent as an attachment rather than a rendered JSON body: this is a document a
+    person is meant to keep, and a browser that displays it inline leaves a page
+    full of their grades sitting in history and in the back/forward cache.
+
+    Rate-limited like the other account routes — assembling it reads every
+    user-owned table, so it is the most expensive authenticated GET in the API.
+    """
+    payload = await export_user_data(db, current_user.id)
+    stamp = payload["exported_at"][:10]
+    return JSONResponse(
+        content=payload,
+        headers={
+            "Content-Disposition": f'attachment; filename="acadvo-export-{stamp}.json"',
+            # Never let an intermediary or the browser keep a copy of this.
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
-@limiter.limit("5/hour")
+@limiter.limit("5/hour", key_func=user_or_ip_key)
 async def delete_me(
     request: Request,
     data: DeleteAccountRequest,

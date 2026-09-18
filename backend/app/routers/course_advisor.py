@@ -24,6 +24,7 @@ from app.ai.research_client import is_research_enabled
 from app.config import settings
 from app.models.requirement_rule import JOB_FAILED, JOB_PENDING, JOB_RUNNING
 from app.research import runner as research_runner
+from app.research.program_rules import check_requirements_url
 from app.research.schema import RuleRejected, validate_requirements_url
 from app.services import course_recommendation as rec_service
 from app.services.requirement_rules import get_rules, rules_summary
@@ -215,10 +216,15 @@ async def program_rules(
 class ProgramRulesRequest(BaseModel):
     """The one thing a human supplies in this whole pipeline.
 
-    Finding the requirements page automatically needs Google Search grounding,
-    which is billed; reading a page you name is free. So one student per program
-    links their official requirements page, and every student in that program is
-    covered from then on — the same bargain as the checklist upload.
+    Finding the requirements page automatically needs a web search, which does
+    not fit the free tier's per-request token limit; reading a page you name
+    costs no tokens at all. So one student per program links their official
+    requirements page, and every student in that program is covered from then
+    on — the same bargain as the checklist upload.
+
+    The URL is fetched server-side, so it is validated twice before anything
+    opens it: ``validate_requirements_url`` here, and a DNS-resolving check on
+    every redirect hop in ``research_client``.
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -247,6 +253,14 @@ async def research_program_rules_endpoint(
         )
     try:
         url = validate_requirements_url(body.url)
+        # Whose page it is matters as much as whether it is fetchable. Rules are
+        # stored per (university, program) and shared with everyone in that
+        # program, and both strings come off this student's own profile — so
+        # without this check, claiming another cohort's university and program
+        # and linking a lookalike page replaces their requirements with yours.
+        # See app/research/program_rules.py for the full policy, including what
+        # happens for a university Acadvo has no domain for.
+        check_requirements_url(current_user.university, url)
     except RuleRejected as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
@@ -256,10 +270,20 @@ async def research_program_rules_endpoint(
     return {
         "status": job.status,
         "source_urls": list(job.source_urls or []),
+        # `request_refresh` can decline to re-queue a program that has already
+        # failed its attempt ceiling on these exact URLs. Saying "Queued" then
+        # would be a lie the student waits on, so the message follows the job's
+        # real status rather than assuming the happy path.
         "message": (
             "Queued. Acadvo will read that page and work out your program's "
             "requirement rules — they will appear here shortly, and will apply to "
             "every student in your program."
+            if job.status == JOB_PENDING
+            else (
+                "Acadvo has already tried that page several times without being "
+                "able to read your program's requirements from it, so it will not "
+                "try again right now. Link a different official requirements page."
+            )
         ),
     }
 
@@ -292,7 +316,15 @@ async def refresh_program_rules(
     )
     return {
         "status": job.status if job else "unavailable",
-        "message": "Queued. Requirement rules will appear here once the research completes.",
+        "message": (
+            "Queued. Requirement rules will appear here once the research completes."
+            if job and job.status == JOB_PENDING
+            else (
+                "Acadvo has already tried this program's pages several times "
+                "without success, so it will not retry immediately. Link a "
+                "different official requirements page instead."
+            )
+        ),
     }
 
 

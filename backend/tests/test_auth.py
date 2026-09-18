@@ -9,6 +9,7 @@ import pytest
 
 async def test_register_success(client):
     resp = await client.post("/auth/register", json={
+        "accepted_terms": True,
         "email": "new@example.com",
         "password": "securepass123",
         "full_name": "New User",
@@ -24,6 +25,7 @@ async def test_register_success(client):
 
 async def test_register_duplicate_email(client):
     payload = {
+        "accepted_terms": True,
         "email": "dupe@example.com",
         "password": "securepass123",
         "full_name": "First User",
@@ -40,6 +42,7 @@ async def test_register_duplicate_email(client):
 
 async def test_login_success(client):
     await client.post("/auth/register", json={
+        "accepted_terms": True,
         "email": "login@example.com",
         "password": "securepass123",
         "full_name": "Login User",
@@ -56,6 +59,7 @@ async def test_login_success(client):
 
 async def test_login_wrong_password(client):
     await client.post("/auth/register", json={
+        "accepted_terms": True,
         "email": "wrong@example.com",
         "password": "securepass123",
         "full_name": "Wrong Pass User",
@@ -72,6 +76,7 @@ async def test_login_wrong_password(client):
 
 async def test_refresh_token(client):
     reg = await client.post("/auth/register", json={
+        "accepted_terms": True,
         "email": "refresh@example.com",
         "password": "securepass123",
         "full_name": "Refresh User",
@@ -96,6 +101,7 @@ async def test_refresh_token(client):
 async def test_refresh_requires_refresh_type_token(client):
     """An access token must not be accepted as a refresh token."""
     reg = await client.post("/auth/register", json={
+        "accepted_terms": True,
         "email": "typecheck@example.com",
         "password": "securepass123",
         "full_name": "Type Check",
@@ -109,6 +115,7 @@ async def test_refresh_requires_refresh_type_token(client):
 async def test_access_endpoint_rejects_refresh_token(client):
     """A refresh token must not be accepted as an access token."""
     reg = await client.post("/auth/register", json={
+        "accepted_terms": True,
         "email": "typecheck2@example.com",
         "password": "securepass123",
         "full_name": "Type Check 2",
@@ -123,6 +130,7 @@ async def test_access_endpoint_rejects_refresh_token(client):
 
 async def test_logout(client):
     reg = await client.post("/auth/register", json={
+        "accepted_terms": True,
         "email": "logout@example.com",
         "password": "securepass123",
         "full_name": "Logout User",
@@ -136,3 +144,65 @@ async def test_logout(client):
     client.cookies.set("refresh_token", refresh_before)
     resp2 = await client.post("/auth/refresh")
     assert resp2.status_code == 401
+
+
+# ── Terms acceptance (a record, not a control) ───────────────────────
+
+async def test_registration_requires_the_terms_acceptance(client):
+    """No acceptance, no account.
+
+    Deliberately not framed as security: the server cannot verify anyone's age,
+    and someone who forges the flag gains nothing they could not get by ticking
+    the box. It is refused so that the stored record means something — an
+    account with no acceptance would be an account the terms cannot be enforced
+    against.
+    """
+    resp = await client.post("/auth/register", json={
+        "email": "noconsent@example.com",
+        "password": "securepass123",
+        "full_name": "No Consent",
+    })
+    assert resp.status_code == 422
+
+
+async def test_acceptance_is_recorded_with_its_version(client, db):
+    from sqlalchemy import select
+
+    from app.models.user import User
+    from app.services.auth import TERMS_VERSION
+
+    resp = await client.post("/auth/register", json={
+        "accepted_terms": True,
+        "terms_version": "2026-08-23",
+        "email": "consented@example.com",
+        "password": "securepass123",
+        "full_name": "Consented",
+    })
+    assert resp.status_code == 200
+
+    user = (
+        await db.execute(select(User).where(User.email == "consented@example.com"))
+    ).scalar_one()
+    # The timestamp is the server's own, so the record cannot be backdated by
+    # whoever is registering.
+    assert user.terms_accepted_at is not None
+    assert user.terms_version == "2026-08-23"
+
+
+async def test_a_client_that_names_no_version_gets_the_current_one(client, db):
+    from sqlalchemy import select
+
+    from app.models.user import User
+    from app.services.auth import TERMS_VERSION
+
+    await client.post("/auth/register", json={
+        "accepted_terms": True,
+        "email": "versionless@example.com",
+        "password": "securepass123",
+        "full_name": "Versionless",
+    })
+
+    user = (
+        await db.execute(select(User).where(User.email == "versionless@example.com"))
+    ).scalar_one()
+    assert user.terms_version == TERMS_VERSION
