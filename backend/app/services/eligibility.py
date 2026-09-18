@@ -25,6 +25,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.data.program_config import get_graduate_rule
 from app.data.york_cs_catalog import EQUIVALENT_GROUPS
 from app.models.degree import Course, CourseStatus
 from app.services.degree import calculate_major_gpa
@@ -247,12 +248,20 @@ def _course_number(code: str) -> int | None:
         return None
 
 
-def is_graduate_level(code: str) -> bool:
+def is_graduate_level(code: str, university: str | None = None) -> bool:
     """True for a course an undergraduate cannot normally take.
 
     Numbering is per-school but the convention within a school is consistent:
     three-digit codes (SFU's ``CMPT 225``) put graduate work at 700+, four-digit
     codes (York's ``EECS 2030``) at 5000+.
+
+    Pass ``university`` whenever the caller knows it. The width heuristic below
+    is a *fallback*, and for at least two schools it is exactly backwards: UofT
+    and TMU number undergraduate courses with three digits and graduate ones with
+    four (``CSC2515``, ``CP8201``), so the four-digit branch — written for York,
+    where 4000 is a senior undergraduate course — waves every one of them through
+    as undergraduate. ``program_config.GRADUATE_RULES`` carries the per-school
+    rule; only when a school has no entry does the heuristic decide.
 
     This matters now in a way it did not before. The hand-entered York catalog
     held 22 undergraduate courses, so nothing graduate could be recommended. A
@@ -264,6 +273,16 @@ def is_graduate_level(code: str) -> bool:
     n = _course_number(code)
     if n is None:
         return False
+
+    rule = get_graduate_rule(university)
+    if rule:
+        digits = len(str(n))
+        if "graduate_digits" in rule and digits >= rule["graduate_digits"]:
+            return True
+        if "min_number" in rule and n >= rule["min_number"]:
+            return True
+        return False
+
     if n >= 1000:                 # four-digit numbering (York: 5000+ is graduate)
         return n >= 5000
     # Three-digit numbering: 500+ is graduate. Verified against the ingested SFU
@@ -273,9 +292,18 @@ def is_graduate_level(code: str) -> bool:
     return n >= 500
 
 
-def undergraduate_only(catalog: dict[str, dict]) -> dict[str, dict]:
-    """Drop graduate-level entries from a catalog."""
-    return {c: e for c, e in catalog.items() if not is_graduate_level(c)}
+def undergraduate_only(
+    catalog: dict[str, dict], university: str | None = None
+) -> dict[str, dict]:
+    """Drop graduate-level entries from a catalog.
+
+    ``university`` is optional only so existing hermetic callers keep working;
+    every real call site has it, and passing it is what keeps UofT's ``CSC 2515``
+    out of an undergraduate's plan.
+    """
+    return {
+        c: e for c, e in catalog.items() if not is_graduate_level(c, university)
+    }
 
 
 def shortlist_for_query(

@@ -183,3 +183,50 @@ def test_the_students_own_subject_still_wins_the_top_of_the_list():
     catalog = {**_big("FREN", 30, "French"), **_big("BISC", 30, "Biology")}
     short = shortlist_for_student(catalog, set(), program="French", limit=30)
     assert all(c.startswith("FREN") for c in list(short)[:30])
+
+
+# ── Per-university graduate numbering ────────────────────────────────
+
+def test_uoft_four_digit_courses_are_graduate_not_senior_undergrad():
+    """UofT numbers graduate courses with four digits and undergraduate ones with
+    three, which is the exact inverse of York.
+
+    Under the width heuristic alone (``>=1000`` graduate only at ``>=5000``,
+    written for York) every UofT graduate course read as undergraduate, so the
+    planner could schedule CSC 2515 — a PhD-level machine learning course — into
+    a first-year student's Fall term.
+    """
+    assert is_graduate_level("CSC 2515H1", "University of Toronto")
+    assert not is_graduate_level("CSC 148H1", "University of Toronto")
+    assert not is_graduate_level("MAT 137Y1", "University of Toronto")
+    # Same inversion at TMU (CP 8201 is graduate; CPS 209 is second year).
+    assert is_graduate_level("CP 8201", "Toronto Metropolitan University")
+    assert not is_graduate_level("CPS 209", "Toronto Metropolitan University")
+
+
+def test_york_keeps_its_own_rule_when_others_change():
+    """The fix must not make York's senior undergraduate courses disappear."""
+    assert not is_graduate_level("LE/EECS 4101", "York University")
+    assert is_graduate_level("LE/EECS 5101", "York University")
+
+
+def test_waterloo_graduate_threshold():
+    assert not is_graduate_level("CS 486", "University of Waterloo")
+    assert is_graduate_level("CS 686", "University of Waterloo")
+
+
+def test_unknown_university_falls_back_to_the_width_heuristic():
+    """A school with no rule keeps exactly the previous behaviour — the fallback
+    is a fallback, not a silent pass."""
+    assert is_graduate_level("BISC 800", "Some Unlisted University")
+    assert not is_graduate_level("BISC 490", "Some Unlisted University")
+    assert is_graduate_level("BISC 800")
+
+
+def test_undergraduate_only_filters_per_university():
+    catalog = _catalog(("CSC 148H1", "Intro to Computer Science"),
+                       ("CSC 2515H1", "Machine Learning"))
+    assert set(undergraduate_only(catalog, "University of Toronto")) == {"CSC 148H1"}
+    # Without the university it falls back and lets the graduate course through,
+    # which is why every real call site passes one.
+    assert set(undergraduate_only(catalog)) == {"CSC 148H1", "CSC 2515H1"}

@@ -15,6 +15,7 @@ def _token_from(body: str) -> str:
 
 async def test_verification_email_sent_on_register(client, sent_emails):
     resp = await client.post("/auth/register", json={
+        "accepted_terms": True,
         "email": "verify@example.com",
         "password": "securepass123",
         "full_name": "Verify User",
@@ -27,6 +28,7 @@ async def test_verification_email_sent_on_register(client, sent_emails):
 
 async def test_email_verification_flow(client, sent_emails):
     await client.post("/auth/register", json={
+        "accepted_terms": True,
         "email": "verifyflow@example.com",
         "password": "securepass123",
         "full_name": "Verify Flow",
@@ -63,6 +65,7 @@ async def test_forgot_password_no_enumeration(client, sent_emails):
 
 async def test_password_reset_flow(client, sent_emails):
     await client.post("/auth/register", json={
+        "accepted_terms": True,
         "email": "resetflow@example.com",
         "password": "OldPassphrase123",
         "full_name": "Reset Flow",
@@ -96,6 +99,7 @@ async def test_reset_password_bad_token(client):
 
 async def test_reset_password_too_short(client, sent_emails):
     await client.post("/auth/register", json={
+        "accepted_terms": True,
         "email": "shortpw@example.com",
         "password": "OldPassphrase123",
         "full_name": "Short PW",

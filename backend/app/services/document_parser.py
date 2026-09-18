@@ -2,11 +2,15 @@ import base64
 import csv
 import io
 import json
+import logging
 import re
 
-from app.ai.client import acomplete, get_groq_client, run_blocking, completion_text, vision_kwargs, json_kwargs
+from app.ai.client import acomplete, get_groq_client, run_blocking, completion_text, finish_reason, vision_kwargs, json_kwargs
 from app.config import settings
 from app.services.uploads import pdf_to_text, spreadsheet_to_text
+
+logger = logging.getLogger("acadvo.document_parser")
+
 
 class UnreadableDocumentError(ValueError):
     """The file carried no text to give the model.
@@ -20,6 +24,25 @@ class UnreadableDocumentError(ValueError):
     them. This gets its own error so the router can say what is actually wrong
     and what to do about it.
     """
+
+
+class ModelOutputError(ValueError):
+    """The model's answer was unusable — as distinct from the document being bad.
+
+    These two failures were indistinguishable to the user: both surfaced as
+    "Could not parse document. Please ensure it is a valid degree checklist",
+    which tells someone whose file is perfectly fine to go and re-export it. A
+    truncated or empty completion is our problem, not theirs, and the message
+    should say so.
+    """
+
+
+class TruncatedModelOutputError(ModelOutputError):
+    """The completion hit the token ceiling and stopped mid-JSON."""
+
+
+class EmptyModelOutputError(ModelOutputError):
+    """The completion carried no text at all."""
 
 
 # Below this many characters there is nothing worth sending. A real checklist
@@ -63,12 +86,56 @@ FACULTY_PREFIXES: dict[str, str] = {
 _SCIENCE_LAB_SUBJECTS = {"BIOL", "CHEM", "PHYS"}
 
 # Matches an optional 2-letter faculty prefix, a 2-5 letter subject, a 3-OR-
-# 4-digit catalog number, and an optional single trailing letter (e.g. the
-# ``W`` in ``CMPT 105W``), tolerating loose spacing/slashes. Requiring at least
-# 3 digits avoids false positives on prose ("MATH 12", "Chapter 300" fragments
-# still need a subject-like token, but 1-2 digit numbers never match).
+# 4-digit catalog number, an optional single trailing letter (e.g. the ``W`` in
+# ``CMPT 105W``), and — only when that letter is present — an optional campus
+# digit (the ``1`` in UofT's ``CSC148H1``), tolerating loose spacing/slashes.
+# Requiring at least 3 digits avoids false positives on prose ("MATH 12",
+# "Chapter 300" fragments still need a subject-like token, but 1-2 digit numbers
+# never match).
+#
+# The campus digit is gated on the letter deliberately. UofT writes the campus
+# into the code itself — ``CSC148H1`` is St. George and ``CSC148H5`` is
+# Mississauga — and without this group both truncated to ``CSC 148H``, collapsing
+# two different offerings at two different campuses into one course whose
+# prerequisites came from whichever was ingested last. Gating on the letter keeps
+# a bare four-digit York number (``EECS 2101``) from swallowing a following digit.
+# UofT Scarborough numbers courses differently from every other school here:
+# ``CSCA08H3`` is subject ``CSC``, level-and-number ``A08``, weight ``H``, campus
+# ``3``. The letter after the subject encodes the year of study (A first, D
+# fourth), and only TWO digits follow it — so the general pattern below, which
+# requires three, matched none of it. A UTSC course code came back from
+# ``normalize_course_code`` unchanged and ``subject_of`` returned None for it,
+# which meant no subject to check coverage against and no way for a UTSC
+# student's own course to match the same course in the catalog.
+#
+# Checked BEFORE the general pattern, and deliberately narrow — three subject
+# letters, a level letter, exactly two digits, a weight letter and a campus digit
+# — so it cannot swallow a York or SFU code (``MATH 1300`` and ``CMPT 105W`` both
+# fail it, verified in tests).
+_UTSC_CODE_RE = re.compile(r"\b([A-Za-z]{3})\s*([A-Za-z]\d{2})([A-Za-z])(\d)\b")
+
+
+def _match_utsc(raw: str) -> tuple[str, str] | None:
+    """``"CSCA08H3"`` -> ``("CSC", "A08H3")``, else None."""
+    m = _UTSC_CODE_RE.search(raw or "")
+    if not m:
+        return None
+    return m.group(1).upper(), f"{m.group(2).upper()}{m.group(3).upper()}{m.group(4)}"
+
+
+# Named groups, because the pattern now carries six pieces and positional
+# indexes silently shift the moment one is added in the middle.
+#
+# ``camp`` is UBC's campus marker. UBC writes the campus INTO the subject —
+# ``CPSC_V`` is Vancouver, ``CPSC_O`` Okanagan — and it is load-bearing: the two
+# campuses share 591 subject-and-number pairs that are genuinely different
+# courses (Vancouver's SPAN 201 is "Elementary Spanish I", Okanagan's is
+# "Advanced Beginners' Spanish I"). Dropping the marker would merge all 591, the
+# same way truncating ``CSC148H1`` used to merge two UofT campuses.
 _CODE_RE = re.compile(
-    r"(?:([A-Za-z]{2})\s*/\s*)?([A-Za-z]{2,5})\s*(\d{3,4})([A-Za-z]?)"
+    r"(?:(?P<fac>[A-Za-z]{2})\s*/\s*)?"
+    r"(?P<subj>[A-Za-z]{2,5})(?P<camp>_[A-Za-z])?\s*"
+    r"(?P<num>\d{3,4})(?:(?P<sfx>[A-Za-z])(?P<cdig>\d)?)?"
 )
 
 
@@ -91,14 +158,24 @@ def normalize_course_code(raw: str | None) -> str:
         ``"cmpt 225"``          -> ``"CMPT 225"``
         ``"CMPT225"``           -> ``"CMPT 225"``
         ``"CMPT 105w"``         -> ``"CMPT 105W"``
+        ``"csc148h1"``          -> ``"CSC 148H1"`` (UofT: campus digit preserved)
+        ``"CSC148H5"``          -> ``"CSC 148H5"`` (a different campus, kept distinct)
+        ``"CSCA08H3"``          -> ``"CSC A08H3"`` (UTSC: level letter, 2 digits)
+        ``"CPSC_V 100"``        -> ``"CPSC_V 100"`` (UBC: campus marker kept)
+        ``"cpsc_o 111"``        -> ``"CPSC_O 111"`` (the other campus, kept apart)
     """
     if not raw:
         return ""
+    utsc = _match_utsc(raw)
+    if utsc:
+        return f"{utsc[0]} {utsc[1]}"
     m = _CODE_RE.search(raw)
     if not m:
         return raw.strip()
-    faculty, subject, number = m.group(1), m.group(2).upper(), m.group(3)
-    number += m.group(4).upper()  # optional trailing letter, e.g. "105W"
+    faculty, subject, number = m.group("fac"), m.group("subj").upper(), m.group("num")
+    campus = (m.group("camp") or "").upper()   # UBC's "_V" / "_O"
+    number += (m.group("sfx") or "").upper()   # optional trailing letter, e.g. "105W"
+    number += m.group("cdig") or ""            # optional campus digit, e.g. UofT "148H1"
     # The York faculty map is only consulted for York-shaped course numbers.
     #
     # FACULTY_PREFIXES turns "MATH" into "SC/MATH" — correct at York, and applied
@@ -117,8 +194,8 @@ def normalize_course_code(raw: str | None) -> str:
         FACULTY_PREFIXES.get(subject) if len(number.rstrip("ABCDEFGHIJKLMNOPQRSTUVWXYZ")) >= 4 else None
     )
     if faculty:
-        return f"{faculty}/{subject} {number}"
-    return f"{subject} {number}"
+        return f"{faculty}/{subject}{campus} {number}"
+    return f"{subject}{campus} {number}"
 
 
 def extract_course_codes(text: str | None) -> list[str]:
@@ -126,6 +203,10 @@ def extract_course_codes(text: str | None) -> list[str]:
     if not text:
         return []
     out: list[str] = []
+    for m in _UTSC_CODE_RE.finditer(text):
+        code = normalize_course_code(m.group(0))
+        if code and code not in out:
+            out.append(code)
     for m in _CODE_RE.finditer(text):
         code = normalize_course_code(m.group(0))
         if code and code not in out:
@@ -137,8 +218,11 @@ def subject_of(code: str | None) -> str | None:
     """Return the subject (e.g. ``EECS``) of a canonical/near-canonical code."""
     if not code:
         return None
+    utsc = _match_utsc(code)
+    if utsc:
+        return utsc[0]
     m = _CODE_RE.search(code)
-    return m.group(2).upper() if m else None
+    return m.group("subj").upper() if m else None
 
 
 def _faculty_of(code: str | None) -> str | None:
@@ -146,7 +230,7 @@ def _faculty_of(code: str | None) -> str | None:
     if not code:
         return None
     m = _CODE_RE.search(code)
-    return m.group(1).upper() if (m and m.group(1)) else None
+    return m.group("fac").upper() if (m and m.group("fac")) else None
 
 
 # ── Prerequisite / GPA-gate parsing ──────────────────────────────────
@@ -230,6 +314,7 @@ Extract ALL degree requirements and courses into this exact JSON format:
       "term": null,
       "status": "not_scheduled",
       "grade": null,
+      "completion_evidence": null,
       "prerequisites_raw": "...",
       "alternatives": []
     }
@@ -247,6 +332,12 @@ Rules:
 - Completion is a claim about this student's record, so it needs EVIDENCE IN THE
   DOCUMENT. Mark "completed" ONLY when the row carries a grade, or a tick/"Y"/
   "Passed"/"Completed" mark in a column that plainly means the course is done.
+- When you mark a course "completed", you MUST also set "completion_evidence" to
+  the VERBATIM text from the document that shows it — the grade, or the column
+  and value such as "Passed: True". Quote the document; never write your own
+  justification, and never fill this in for a course you are not marking
+  completed. A "completed" course with no evidence is downgraded automatically,
+  so an invented value here is worse than none.
 - NEVER infer completion from the year a course belongs to, from the student's
   start or graduation year, or from how far through a program they might be. A
   blank degree checklist is a list of what is REQUIRED, not a transcript: if its
@@ -428,17 +519,42 @@ def _postprocess(parsed: dict) -> dict:
         raw_status = (course.get("status") or "not_scheduled").strip().lower()
         course["status"] = raw_status if raw_status in _VALID_STATUSES else _STATUS_MAP.get(raw_status, "planned")
 
-        # Completion needs evidence, and a grade is the only evidence that
-        # survives into the parsed record. The prompt forbids inferring it, but
-        # prompts drift and this one already did: a blank York checklist came
-        # back with a whole first year marked "completed" purely because the
-        # student's start year made it plausible. That silently fabricates an
-        # academic record, and every downstream number — GPA, credits, remaining
-        # requirements, graduation date — is then wrong. Downgrading costs the
-        # user a few clicks on the review screen; the alternative costs them a
-        # plan built on courses they never took.
-        if course["status"] == "completed" and not (course.get("grade") or "").strip():
+        # Completion needs EVIDENCE from the document. The prompt forbids
+        # inferring it, but prompts drift and this one already did: a blank York
+        # checklist came back with a whole first year marked "completed" purely
+        # because the student's start year made it plausible. That silently
+        # fabricates an academic record, and every downstream number — GPA,
+        # credits, remaining requirements, graduation date — is then wrong.
+        #
+        # This used to accept a grade as the ONLY evidence, which was too narrow
+        # and broke the common case. York's own BSc checklist has no grade column
+        # at all: it records progress in Enrolled/Passed boolean columns. On the
+        # real 2025-2026 Computer Science checklist that meant seven courses the
+        # student had plainly passed were all downgraded to "planned", so the app
+        # reported zero credits completed to someone most of the way through
+        # first year — and would then have recommended courses they had already
+        # taken.
+        #
+        # So the rule is evidence, not grades specifically: a grade, or the
+        # verbatim document text the model quotes into `completion_evidence`. A
+        # blank checklist still yields neither, so the original fabrication stays
+        # fixed.
+        # Never emit a blank name. Bucket-option rows ("Foundational Science Lab
+        # Credits (6.00): SC/BIOL 1000, ...") list a code with no title, and an
+        # empty string renders as a nameless row the student cannot identify.
+        # The code is a poor name but it is a true one; `enrich_from_catalog`
+        # replaces it with the real title wherever a catalog exists.
+        if not (course.get("course_name") or "").strip():
+            course["course_name"] = course.get("course_code") or ""
+
+        evidence = (course.get("completion_evidence") or "").strip()
+        course["completion_evidence"] = evidence or None
+        if course["status"] == "completed" and not (course.get("grade") or "").strip() and not evidence:
             course["status"] = "planned"
+        if course["status"] != "completed":
+            # Evidence only means something on a completed course; carrying it
+            # anywhere else invites a later reader to treat it as a claim.
+            course["completion_evidence"] = None
         # Prerequisites from the notes column.
         notes_raw = course.get("prerequisites_raw") or ""
         course["prerequisites"] = parse_prerequisites_from_notes(notes_raw)
@@ -511,13 +627,34 @@ async def parse_degree_document(file_bytes: bytes, mime_type: str) -> dict:
         )
 
     text = completion_text(response)
+    reason = finish_reason(response)
+
+    # Classify BEFORE trying to parse, so the user is told what actually went
+    # wrong. A response cut off at the ceiling is not a malformed document.
+    if reason == "length":
+        raise TruncatedModelOutputError(
+            "This checklist has more in it than Acadvo could read in one pass, so "
+            "the answer was cut off. Try uploading one year or one section at a "
+            "time, and Acadvo will merge them."
+        )
+    if not text.strip():
+        raise EmptyModelOutputError(
+            "The AI returned an empty response. This is a temporary problem on "
+            "our side — please try the upload again."
+        )
 
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError:
-        raise ValueError(
-            "The AI response was not valid JSON. "
-            "Try uploading a clearer document or a different format."
+        # Log a bounded sample: without it this is unreproducible after the fact,
+        # and the model is the suspect, not the file.
+        logger.warning(
+            "Model returned non-JSON (finish_reason=%s, %d chars): %.200r",
+            reason, len(text), text,
+        )
+        raise ModelOutputError(
+            "Acadvo could not read the AI's answer for this document. Please try "
+            "the upload again; if it keeps happening, try a different format."
         )
 
     return _postprocess(parsed)

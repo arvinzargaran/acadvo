@@ -23,12 +23,32 @@ from __future__ import annotations
 import re
 
 # A course code: 2-5 letter subject, optional space, 3-4 digit number, optional
-# single trailing letter (e.g. "CMPT 105W", "MACM 101", "EECS 2101").
-_CODE_RE = re.compile(r"\b([A-Z]{2,5})\s*([0-9]{3,4}[A-Z]?)\b")
+# single trailing letter, and an optional campus digit after that letter
+# (e.g. "CMPT 105W", "MACM 101", "EECS 2101", UofT's "CSC148H1").
+#
+# The campus digit is not cosmetic here. Without it the trailing ``\b`` could not
+# close after "148H" (a digit follows), so the pattern matched **nothing at all**
+# in UofT prose: every UofT prerequisite string parsed to ``[]`` and every UofT
+# course looked like it had no prerequisites the app could check.
+# ``camp`` is UBC's campus marker, which UBC writes into its own prerequisite
+# prose: "Prerequisite: CPSC_V 213 and either CPSC_V 221 or DSCI_V 221." Without
+# it the subject matched "CPSC" and then hit an underscore where a digit was
+# required, so EVERY UBC prerequisite naming a course parsed to nothing — the
+# first UBC ingest recorded prerequisites for 15% of courses where the real
+# figure is far higher.
+_CODE_RE = re.compile(
+    r"\b(?P<subj>[A-Z]{2,5})(?P<camp>_[A-Z])?\s*(?P<num>[0-9]{3,4}[A-Z]?[0-9]?)\b"
+)
+
+# UofT Scarborough's shape: CSCA08H3 -> subject "CSC", number "A08H3". Tried
+# first, for the same reason and with the same narrowness as in
+# ``services/document_parser``: without it a UTSC prerequisite string parses to
+# nothing at all.
+_UTSC_CODE_RE = re.compile(r"\b(?P<subj>[A-Z]{3})\s*(?P<num>[A-Z][0-9]{2}[A-Z][0-9])\b")
 
 
-def _canon(subject: str, number: str) -> str:
-    return f"{subject.upper()} {number.upper()}"
+def _canon(subject: str, number: str, campus: str = "") -> str:
+    return f"{subject.upper()}{campus.upper()} {number.upper()}"
 
 
 def _tokenize(text: str) -> list:
@@ -49,9 +69,16 @@ def _tokenize(text: str) -> list:
             tokens.append("or")
             i += 1
             continue
+        # UTSC's shape is tried first: its subject is three letters followed by a
+        # level letter, which the general pattern would otherwise mis-split.
+        m = _UTSC_CODE_RE.match(upper, i)
+        if m:
+            tokens.append(_canon(m.group("subj"), m.group("num")))
+            i = m.end()
+            continue
         m = _CODE_RE.match(upper, i)
         if m:
-            tokens.append(_canon(m.group(1), m.group(2)))
+            tokens.append(_canon(m.group("subj"), m.group("num"), m.group("camp") or ""))
             i = m.end()
             continue
         # word operators

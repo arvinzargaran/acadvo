@@ -120,12 +120,28 @@ def extract_bucket_options(text: str | None) -> list[tuple[str, float]]:
     return out
 
 
-def rows_from_parsed_document(parsed: dict) -> list[CatalogRow]:
+def rows_from_parsed_document(
+    parsed: dict, university: str | None = None
+) -> list[CatalogRow]:
     """Convert ``document_parser`` output into catalog rows.
 
     ``parsed`` is the shape ``parse_document`` returns: ``{"requirements": [...],
     "courses": [{course_code, course_name, credit_value, prerequisites_raw, ...}]}``.
+
+    ``university`` sets what a course is worth when the document does not say.
+    This is the ingestion path for every school with no API — TMU and UofT among
+    them — and it used to fall back to York's 3.0 credits, writing 3.0 for a UofT
+    half-course worth 0.5 and for a TMU course worth 1.00. The fallback now comes
+    from the school's own credit model, derived from the credit values elsewhere
+    in the same document wherever the parse supplied any.
     """
+    from app.data.credit_models import get_credit_model
+
+    parsed_courses = parsed.get("courses") or []
+    default_credits = get_credit_model(
+        university,
+        student_credit_values=[c.get("credit_value") for c in parsed_courses],
+    ).unit
     rows: list[CatalogRow] = []
     seen: set[str] = set()
     skipped = 0
@@ -145,9 +161,9 @@ def rows_from_parsed_document(parsed: dict) -> list[CatalogRow]:
         seen.add(code)
 
         try:
-            credits = float(course.get("credit_value") or 0) or 3.0
+            credits = float(course.get("credit_value") or 0) or default_credits
         except (TypeError, ValueError):
-            credits = 3.0
+            credits = default_credits
 
         notes = course.get("prerequisites_raw") or ""
         # Prefer prerequisites the parser already structured; fall back to

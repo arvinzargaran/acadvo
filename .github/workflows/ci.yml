@@ -58,6 +58,60 @@ jobs:
           DATABASE_URL_SYNC: postgresql://acadvo:acadvo@localhost:5432/acadvo
         run: alembic upgrade head
 
+      # The test suite builds its schema with `Base.metadata.create_all` against
+      # SQLite (tests/conftest.py), while production builds it from the Alembic
+      # migrations against Postgres. Nothing compared the two, so a model that
+      # gained a column without a matching migration passed every test and broke
+      # only on the deployment host: the suite creates the column it just read
+      # off the model, and the migration job never looks at the models at all.
+      #
+      # That is not hypothetical for code that reads the schema at runtime.
+      # app/services/data_export.py deliberately walks `Base.metadata` and
+      # SELECTs every column of every user-owned table, so a single drifted
+      # column turns `GET /users/me/export` into an UndefinedColumnError in
+      # production while CI is entirely green.
+      #
+      # Names only, not types: comparing types across the SQLAlchemy/Postgres
+      # boundary is noisy enough to be ignored, and a missing column is the
+      # failure that actually ships.
+      - name: Models and migrations agree
+        working-directory: backend
+        env:
+          DATABASE_URL_SYNC: postgresql://acadvo:acadvo@localhost:5432/acadvo
+        run: |
+          python - <<'PY'
+          import os, sys
+          from sqlalchemy import create_engine, inspect
+          from app.database import Base
+          import app.models  # noqa: F401 — registers every table on Base.metadata
+
+          insp = inspect(create_engine(os.environ["DATABASE_URL_SYNC"]))
+          live = {
+              t: {c["name"] for c in insp.get_columns(t)}
+              for t in insp.get_table_names()
+              if t != "alembic_version"
+          }
+          declared = {n: {c.name for c in t.columns} for n, t in Base.metadata.tables.items()}
+
+          problems = []
+          for name in sorted(set(declared) - set(live)):
+              problems.append(f"table {name!r} is declared in app.models but no migration creates it")
+          for name in sorted(set(live) - set(declared)):
+              problems.append(f"table {name!r} exists after migrations but no model declares it")
+          for name in sorted(set(declared) & set(live)):
+              for col in sorted(declared[name] - live[name]):
+                  problems.append(f"{name}.{col} is declared in app.models but no migration adds it")
+              for col in sorted(live[name] - declared[name]):
+                  problems.append(f"{name}.{col} exists after migrations but no model declares it")
+
+          if problems:
+              print("Model/migration drift:")
+              for p in problems:
+                  print("  -", p)
+              sys.exit(1)
+          print(f"Models and migrations agree: {len(declared)} tables.")
+          PY
+
       - name: Run tests
         working-directory: backend
         run: python -m pytest -q

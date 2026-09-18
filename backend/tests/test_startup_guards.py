@@ -9,6 +9,8 @@ every suite would still have passed.
 Each test below drives the real lifespan against a settings object mutated to the
 bad value, and asserts it refuses.
 """
+import logging
+
 import pytest
 
 from app.config import settings
@@ -19,6 +21,33 @@ async def _boot():
     """Run the app's lifespan startup, or raise whatever it raises."""
     async with lifespan(None):
         pass
+
+
+@pytest.fixture
+def warnings_logged():
+    """Collect the app logger's warnings.
+
+    `caplog` cannot see them: `main.py` gives `app.main` its own handler and sets
+    `propagate = False`, so nothing reaches the root logger pytest attaches to.
+    A handler on the logger itself is what actually observes what an operator
+    would see in the container's output.
+    """
+    records: list[str] = []
+
+    class _Collect(logging.Handler):
+        def emit(self, record):
+            records.append(record.getMessage())
+
+    logger = logging.getLogger("app.main")
+    handler = _Collect(level=logging.WARNING)
+    previous = logger.level
+    logger.setLevel(logging.WARNING)
+    logger.addHandler(handler)
+    try:
+        yield records
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous)
 
 
 @pytest.fixture
@@ -92,6 +121,38 @@ async def test_no_smtp_can_be_chosen_deliberately(prod, monkeypatch):
     monkeypatch.setattr(settings, "SMTP_HOST", "")
     monkeypatch.setattr(settings, "ALLOW_NO_SMTP", True)
     await _boot()
+
+
+async def test_an_unbounded_token_ceiling_is_flagged_on_a_configured_key(
+    prod, monkeypatch, warnings_logged
+):
+    """Warned, not refused: 0 is correct on a paid tier. But on the free tier it
+    means every semester plan and research job 413s while the stack looks green,
+    so it must not pass in silence."""
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "gsk_a_real_looking_key")
+    monkeypatch.setattr(settings, "GROQ_MAX_REQUEST_TOKENS", 0)
+    await _boot()
+    assert any("GROQ_MAX_REQUEST_TOKENS" in m for m in warnings_logged)
+
+
+async def test_a_configured_token_ceiling_is_not_flagged(
+    prod, monkeypatch, warnings_logged
+):
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "gsk_a_real_looking_key")
+    monkeypatch.setattr(settings, "GROQ_MAX_REQUEST_TOKENS", 8000)
+    await _boot()
+    assert not any("GROQ_MAX_REQUEST_TOKENS" in m for m in warnings_logged)
+
+
+async def test_no_ai_key_means_no_token_ceiling_warning(
+    prod, monkeypatch, warnings_logged
+):
+    """Nothing to warn about when the AI is deliberately off — the deployment
+    already knows it has no advisor."""
+    monkeypatch.setattr(settings, "GROQ_API_KEY", "")
+    monkeypatch.setattr(settings, "GROQ_MAX_REQUEST_TOKENS", 0)
+    await _boot()
+    assert not any("GROQ_MAX_REQUEST_TOKENS" in m for m in warnings_logged)
 
 
 async def test_debug_mode_skips_the_production_guards(prod, monkeypatch):

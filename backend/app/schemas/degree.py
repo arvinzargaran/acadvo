@@ -137,6 +137,12 @@ class ParsedCourse(BaseModel):
     alternatives: list[str] = Field(default_factory=list)
     # prerequisites_raw: verbatim "Notes / Prerequisites" text, if any.
     prerequisites_raw: str | None = None
+    # completion_evidence: the verbatim document text backing a "completed"
+    # status — a grade, or a column value such as "Passed: True". Only ever set
+    # on a completed course. It is what lets a checklist WITHOUT a grade column
+    # (York's own BSc checklist records Enrolled/Passed booleans) report real
+    # completions, while a blank checklist still reports none.
+    completion_evidence: str | None = None
     # gpa_gate: structured minimum-GPA gate, e.g. {"scope": "EECS", "min": 4.5}.
     gpa_gate: dict | None = None
 

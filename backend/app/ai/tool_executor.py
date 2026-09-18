@@ -45,6 +45,12 @@ UNIVERSITY_DOMAINS = {
     "University of Windsor": "uwindsor.ca",
     "University of New Brunswick": "unb.ca",
     "Brock University": "brocku.ca",
+    # Both Québec schools were selectable in the registration dropdown but absent
+    # here, so `program_rules.expected_domain` returned None for them: the
+    # requirements-research domain gate did not apply, and their students fell to
+    # the weaker first-writer-pins policy instead of a real check.
+    "Université de Montréal": "umontreal.ca",
+    "Université Laval": "ulaval.ca",
 }
 
 def _require(inp: dict, *keys: str) -> str | None:

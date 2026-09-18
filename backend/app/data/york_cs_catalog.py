@@ -12,12 +12,7 @@ satisfies it (OR). ``[]`` means no prerequisites.
 ``gpa_gate`` is ``{"scope": "EECS", "min": 4.50}`` for the ~2000/3000/4000-level
 EECS courses that carry the 4.50 EECS-GPA gate, else ``None``.
 """
-import uuid
-
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.models.catalog import CatalogCourse
 
 YORK_UNIVERSITY = "York University"
 
@@ -108,17 +103,27 @@ EQUIVALENT_GROUPS: list[set[str]] = [
 ]
 
 
-async def seed_catalog(db: AsyncSession, university: str = YORK_UNIVERSITY) -> int:
-    """Idempotently upsert the York CS catalog rows.
+# Provenance shown to students via ``get_catalog_status``. Distinguishable from
+# an API ingest (``sfu_course_outlines``) and from a checklist promotion
+# (``checklist:<label>``), so a later authoritative York import is visibly a
+# different, better source than this hand transcription.
+SOURCE = "manual:york-bsc-hons-cs-2025-2026"
 
-    Uses an ON CONFLICT (university, course_code) upsert so re-running refreshes
-    name/credits/prerequisites/gpa_gate without creating duplicates. Returns the
-    number of rows processed. Caller is responsible for committing.
+
+async def seed_catalog(db: AsyncSession, university: str = YORK_UNIVERSITY) -> int:
+    """Idempotently upsert the York CS catalog rows. Returns the number written.
+
+    Delegates to the shared ``upsert_catalog`` rather than carrying its own
+    PostgreSQL-only ``ON CONFLICT``: that made this the one write path the SQLite
+    test harness could not exercise, which is part of why it went unnoticed that
+    **nothing ever called it**. The 22 courses transcribed here existed only in
+    source; a fresh deployment had an empty catalog and every York student was
+    silently advised off their own upload.
     """
+    from app.ingest.store import upsert_catalog
+
     rows = [
         {
-            "id": uuid.uuid4(),
-            "university": university,
             "course_code": c["course_code"],
             "course_name": c["course_name"],
             "credits": c["credits"],
@@ -128,18 +133,4 @@ async def seed_catalog(db: AsyncSession, university: str = YORK_UNIVERSITY) -> i
         }
         for c in YORK_CS_COURSES
     ]
-
-    stmt = insert(CatalogCourse).values(rows)
-    stmt = stmt.on_conflict_do_update(
-        constraint="uq_catalog_university_course_code",
-        set_={
-            "course_name": stmt.excluded.course_name,
-            "credits": stmt.excluded.credits,
-            "subject_faculty": stmt.excluded.subject_faculty,
-            "prerequisites": stmt.excluded.prerequisites,
-            "gpa_gate": stmt.excluded.gpa_gate,
-        },
-    )
-    await db.execute(stmt)
-    await db.commit()
-    return len(rows)
+    return await upsert_catalog(db, university, rows, source=SOURCE)

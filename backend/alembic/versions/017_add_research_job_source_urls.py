@@ -1,9 +1,9 @@
 """Record which university pages a research job should read.
 
-Finding a program's requirements page automatically needs Google Search
-grounding, which is a billed Gemini feature (every grounded call 429s on the
-free tier). Reading a page you name does not. So the URL becomes the one input a
-human supplies — once per program, for everyone in it — and it lives on the job.
+Finding a program's requirements page automatically needs a web search, which
+does not fit the free tier's per-request token limit. Reading a page you name
+does. So the URL becomes the one input a human supplies — once per program, for
+everyone in it — and it lives on the job.
 
 Revision ID: 017
 Revises: 016

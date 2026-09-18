@@ -551,7 +551,7 @@ async def test_uncatalogued_university_can_advise_from_its_own_checklist(
     assert recs[0].course_name == "Systems Programming"
 
 
-async def test_cs_only_catalog_refuses_to_advise_a_psychology_student(db, monkeypatch):
+async def test_cs_only_catalog_never_offers_eecs_to_a_psychology_student(db, monkeypatch):
     """Catalogs are built one program document at a time, so they are almost
     never university-wide.
 
@@ -560,6 +560,12 @@ async def test_cs_only_catalog_refuses_to_advise_a_psychology_student(db, monkey
     would otherwise make a York Psychology student "covered": they stop getting
     "no catalog" and start being recommended EECS courses. Confidently wrong is
     worse than blank.
+
+    The protection is that the foreign-subject rows are removed from the pool, so
+    an EECS course cannot be recommended even when the model asks for one. What
+    is NOT done any more is refusing the student outright: they are advised from
+    their own uploaded checklist, exactly as a student at an uncatalogued
+    university already is.
     """
     await _seed_york_catalog(db)  # EECS/MATH only
     user = await _student_with_uploaded_checklist(
@@ -571,11 +577,47 @@ async def test_cs_only_catalog_refuses_to_advise_a_psychology_student(db, monkey
             {"course_code": "AP/PSYC 2130", "course_name": "Cognitive Psychology", "credits": 3.0},
         ],
     )
+    # The model asks for a course from the foreign catalog. It must not survive.
     _patch_llm(monkeypatch, json.dumps([_rec("LE/EECS 2030")]))
+    recs = await generate_recommendations(user.id, "Winter 2025", "both", None, db)
+    assert [r.course_code for r in recs] == [], "an EECS course reached a Psychology student"
 
-    with pytest.raises(NoCoverageError) as excinfo:
+
+async def test_psychology_student_is_advised_from_their_own_checklist(db, monkeypatch):
+    """The other half: they are served, not refused.
+
+    Every York student outside Computer Science used to get a hard 409 here, with
+    a fully parsed checklist of their own sitting in the database.
+    """
+    await _seed_york_catalog(db)  # EECS/MATH only
+    user = await _student_with_uploaded_checklist(
+        db,
+        YORK_UNIVERSITY,
+        [
+            {"course_code": "AP/PSYC 1010", "course_name": "Introduction to Psychology", "credits": 6.0},
+            {"course_code": "AP/PSYC 2030", "course_name": "Statistical Methods I", "credits": 3.0},
+            {"course_code": "AP/PSYC 2130", "course_name": "Cognitive Psychology", "credits": 3.0},
+        ],
+    )
+    _patch_llm(monkeypatch, json.dumps([_rec("AP/PSYC 2130")]))
+    recs = await generate_recommendations(user.id, "Winter 2025", "both", None, db)
+    assert [r.course_code for r in recs] == ["AP/PSYC 2130"]
+
+
+async def test_still_refuses_when_nothing_of_the_students_own_remains(db, monkeypatch):
+    """The refusal survives for the case it is actually needed: a student whose
+    every course is already settled, leaving nothing to advise from once the
+    foreign-subject rows are dropped."""
+    await _seed_york_catalog(db)
+    user = await _student_with_uploaded_checklist(
+        db,
+        YORK_UNIVERSITY,
+        [{"course_code": "AP/PSYC 1010", "course_name": "Introduction to Psychology",
+          "credits": 6.0, "status": "completed"}],
+    )
+    _patch_llm(monkeypatch, json.dumps([_rec("LE/EECS 2030")]))
+    with pytest.raises((NoCoverageError, NoCatalogError)):
         await generate_recommendations(user.id, "Winter 2025", "both", None, db)
-    assert "PSYC" in str(excinfo.value)
 
 
 async def test_cs_catalog_still_advises_the_cs_student(db, monkeypatch):
@@ -695,7 +737,7 @@ async def _seed_rule(db, *, bucket_name, program="Computer Science", **over):
         basis=over.pop("basis", BASIS_STATED),
         source_urls=over.pop("source_urls", list(_YORK_SOURCE)),
         extracted_at=over.pop("extracted_at", datetime.now(timezone.utc)),
-        extracted_by="gemini-2.5-flash",
+        extracted_by="groq/compound",
         **over,
     )
     db.add(row)

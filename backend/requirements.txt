@@ -16,10 +16,6 @@ pydantic-settings==2.14.2
 pyjwt==2.13.0
 bcrypt==5.0.0
 groq==1.5.0
-# Gemini, for Google Search grounding only — see app/ai/research_client.py.
-# Groq stays the provider for parsing and recommendations. The native SDK is
-# required because the OpenAI-compatible shims do not expose search grounding.
-google-genai==1.46.0
 pdfplumber==0.11.10
 python-multipart==0.0.32
 openpyxl==3.1.5

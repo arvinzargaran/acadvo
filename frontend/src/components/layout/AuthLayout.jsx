@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import Logo from '../brand/Logo';
 
 /**
  * Split-screen auth shell — a signage panel (lg+) beside the form column.
@@ -25,9 +26,7 @@ export default function AuthLayout({ eyebrow, title, children, wide = false }) {
         <div className="bg-editorial-grid absolute inset-0 pointer-events-none opacity-70" />
 
         <Link to="/" className="relative flex items-center gap-2.5 w-fit">
-          <span className="wf-bullet wf-bullet-live" style={{ width: '2.25rem', height: '2.25rem', fontSize: '1.1rem' }} aria-hidden="true">
-            A
-          </span>
+          <Logo size="2.25rem" />
           <span className="wf-signage text-xl text-dark-50">Acadvo</span>
         </Link>
 

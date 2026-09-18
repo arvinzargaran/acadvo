@@ -1,7 +1,7 @@
 """Tests for syllabus parsing (app.services.degree.parse_and_save_syllabus).
 
 The syllabus parser must:
-  - use the real (Groq) AI client, not a non-existent Gemini SDK,
+  - use the real (Groq) AI client, not a non-existent second SDK,
   - normalize parsed due dates to timezone-aware datetimes,
   - create a timeline deadline event for dated assessments.
 """
@@ -88,7 +88,7 @@ async def test_parse_syllabus_saves_assessments_with_tzaware_dates(db, monkeypat
         course.id, user.id, b"fake-image-bytes", "image/png", db
     )
 
-    # Previously this whole call raised (google.genai import / Gemini API on a
+    # Previously this whole call raised (an import of an SDK that was not there, on a
     # Groq client / NameError on `timezone`), so a dated assessment could never
     # be saved. It must now parse and persist cleanly.
     assert len(saved) == 1

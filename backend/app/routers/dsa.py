@@ -1,10 +1,11 @@
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import get_current_user
+from app.limiter import CRUD_WRITE_LIMIT, limiter, user_or_ip_key
 from app.models.user import User
 from app.schemas.dsa import (
     DSAProblemCreate,
@@ -28,7 +29,9 @@ async def list_problems(
 
 
 @router.post("/problems", response_model=DSAProblemResponse, status_code=201)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def create_problem(
+    request: Request,
     data: DSAProblemCreate,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -37,7 +40,9 @@ async def create_problem(
 
 
 @router.put("/problems/{problem_id}", response_model=DSAProblemResponse)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def update_problem(
+    request: Request,
     problem_id: uuid.UUID,
     data: DSAProblemUpdate,
     user: User = Depends(get_current_user),
@@ -47,7 +52,9 @@ async def update_problem(
 
 
 @router.delete("/problems/{problem_id}", status_code=204)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def delete_problem(
+    request: Request,
     problem_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -72,7 +79,9 @@ async def get_settings(
 
 
 @router.put("/settings", response_model=DSASettingsResponse)
+@limiter.limit(CRUD_WRITE_LIMIT, key_func=user_or_ip_key)
 async def update_settings(
+    request: Request,
     data: DSASettingsUpdate,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

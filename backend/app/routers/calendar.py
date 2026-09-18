@@ -1,14 +1,22 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.limiter import CALENDAR_FEED_LIMIT, limiter
 from app.services import calendar as calendar_service
 
 router = APIRouter()
 
 
 @router.get("/feed/{token}.ics")
-async def calendar_feed(token: str, db: AsyncSession = Depends(get_db)):
+# The only route in the API that is both unauthenticated and expensive: every
+# hit costs a token lookup plus a full render of the account's events, with no
+# session to throttle behind. Keyed on the IP (see CALENDAR_FEED_LIMIT) and set
+# high enough that a real subscriber polling on its own schedule never notices.
+@limiter.limit(CALENDAR_FEED_LIMIT)
+async def calendar_feed(
+    request: Request, token: str, db: AsyncSession = Depends(get_db)
+):
     """Public .ics feed for calendar apps to subscribe to. Auth is the opaque
     token itself, not a session — calendar clients poll this unattended."""
     user = await calendar_service.get_user_by_feed_token(token, db)

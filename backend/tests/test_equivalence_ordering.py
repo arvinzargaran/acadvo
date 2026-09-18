@@ -9,6 +9,7 @@ These lock in the follow-up fixes:
 
 All hermetic — no DB, no network.
 """
+from app.data.credit_models import get_credit_model
 from app.services.eligibility import equivalents_of, expand_equivalents
 from app.services.semester_plan import _sanitize_plan, _pad_plan_to_target
 
@@ -132,6 +133,9 @@ def test_pad_plan_to_target_fills_electives():
         "summary": {"total_credits_required": 120.0, "total_credits_completed": 30.0},
         "planned": [],
         "in_progress": [],
+        "credit_model": get_credit_model(
+            "York University", total_credits_required=120.0
+        ),
     }
     # Plan has 9 credits scheduled; 30 completed => 81 credits short of 120 -> pad.
     plan = {"semesters": [
@@ -143,3 +147,52 @@ def test_pad_plan_to_target_fills_electives():
     assert placeholders, "expected elective placeholders to be added"
     # Never exceeds the per-semester cap.
     assert all(len(s["courses"]) <= 5 for s in padded["semesters"])
+
+
+def test_pad_plan_to_target_uses_the_students_own_credit_model():
+    """A Waterloo plan is padded in 0.5-unit courses toward a 20.0-unit degree.
+
+    The regression this locks: the target was hardcoded to 120 and the placeholder
+    to 3.0 credits, so a Waterloo student with 5.0 of 20.0 units done was told they
+    were 115 units short and offered placeholders six times the size of any course
+    Waterloo actually offers.
+    """
+    cm = get_credit_model("University of Waterloo", total_credits_required=20.0)
+    ctx = {
+        "summary": {"total_credits_required": 20.0, "total_credits_completed": 5.0},
+        "planned": [],
+        "in_progress": [],
+        "credit_model": cm,
+    }
+    plan = {"semesters": [
+        {"term": "Fall 2026", "courses": [{"course_code": "CS 245", "credits": 0.5}]},
+        {"term": "Winter 2027", "courses": []},
+    ]}
+    padded = _pad_plan_to_target(plan, ctx)
+    placeholders = [c for s in padded["semesters"] for c in s["courses"] if c.get("is_placeholder")]
+    assert placeholders, "expected elective placeholders to be added"
+    assert all(p["credits"] == 0.5 for p in placeholders), "padded in York credits"
+    assert all("20.0 units" in p["course_name"] for p in placeholders)
+    # 14.5 units short, five-course cap across two terms => capacity-bound, and the
+    # shortfall warning must be stated in units rather than credits.
+    assert all(len(s["courses"]) <= 5 for s in padded["semesters"])
+    assert any("units" in w for w in padded.get("warnings", []))
+
+
+def test_pad_plan_to_target_no_padding_when_degree_is_complete():
+    """A finished Waterloo degree is not padded — the sub-unit gap check must scale.
+
+    With the old ``if gap < 3`` guard, any university whose courses are worth less
+    than 3 credits could never be "close enough": a student 0.5 units from done
+    kept being offered another course.
+    """
+    cm = get_credit_model("University of Waterloo", total_credits_required=20.0)
+    ctx = {
+        "summary": {"total_credits_required": 20.0, "total_credits_completed": 20.0},
+        "planned": [],
+        "in_progress": [],
+        "credit_model": cm,
+    }
+    plan = {"semesters": [{"term": "Fall 2026", "courses": []}]}
+    padded = _pad_plan_to_target(plan, ctx)
+    assert not [c for s in padded["semesters"] for c in s["courses"]]

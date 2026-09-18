@@ -180,3 +180,40 @@ def test_prose_without_credits_yields_nothing():
         "Eligible Non-Science General Education Credits: Visit "
         "https://lassonde.yorku.ca/student-life/required-advising"
     ) == []
+
+
+def test_missing_credit_values_fall_back_to_the_schools_own_unit():
+    """The checklist path is how every school without an API gets a catalog, so
+    its fallback must not be York's 3.0 credits.
+
+    A UofT checklist row with no credit value used to land as a 3.0-credit
+    course — six times a UofT half-course — which then drove the progress bar,
+    the plan's credit total and every "credits remaining" figure.
+    """
+    parsed = {"courses": [
+        {"course_code": "CSC148H1", "course_name": "Introduction to Computer Science"},
+        {"course_code": "MAT137Y1", "course_name": "Calculus"},
+    ]}
+    rows = rows_from_parsed_document(parsed, "University of Toronto")
+    assert {r["course_code"] for r in rows} == {"CSC 148H1", "MAT 137Y1"}
+    assert all(r["credits"] == 0.5 for r in rows)
+
+    # TMU has no published anchor in the table; its unit is inferred from the
+    # credit values the same document supplies.
+    tmu = {"courses": [
+        {"course_code": "CPS 209", "course_name": "Computer Science II", "credit_value": 1.0},
+        {"course_code": "CPS 305", "course_name": "Data Structures", "credit_value": 1.0},
+        {"course_code": "MTH 110", "course_name": "Discrete Mathematics"},  # no value
+    ]}
+    rows = rows_from_parsed_document(tmu, "Toronto Metropolitan University")
+    by_code = {r["course_code"]: r for r in rows}
+    assert by_code["MTH 110"]["credits"] == 1.0
+
+
+def test_explicit_credit_values_always_win():
+    """Inference is only ever a fallback — a value in the document is authoritative."""
+    parsed = {"courses": [
+        {"course_code": "MAT137Y1", "course_name": "Calculus", "credit_value": 1.0},
+    ]}
+    rows = rows_from_parsed_document(parsed, "University of Toronto")
+    assert rows[0]["credits"] == 1.0

@@ -1,10 +1,11 @@
 export const CANADIAN_UNIVERSITIES = [
+  'Brock University',
   'Carleton University',
   'Concordia University',
   'Dalhousie University',
   'McGill University',
   'McMaster University',
-  'Memorial University of Newfoundland',
+  'Memorial University',
   'Ontario Tech University',
   'Queen\'s University',
   'Simon Fraser University',
@@ -24,5 +25,6 @@ export const CANADIAN_UNIVERSITIES = [
   'University of Waterloo',
   'University of Windsor',
   'Western University',
+  'Wilfrid Laurier University',
   'York University',
 ];

@@ -39,3 +39,36 @@ htmlcov/
 
 # Database dumps (scripts/backup-db.sh) — real user data, never versioned.
 backups/
+
+# ── Pre-publication hardening ────────────────────────────────────────
+# Key material. None of this has ever been committed here; these patterns
+# exist so a stray file can never become the first time.
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+id_rsa
+id_ed25519
+*.crt
+
+# Every dotenv variant, except the checked-in template. `.env` alone missed
+# `.env.staging`, `backend/.env.local`, and anything else a future variant is
+# called; a leading `*` would have caught the real secrets sitting in ./.env
+# and ./backend/.env only by luck of naming.
+.env*
+!.env.example
+
+# Local databases and dumps — real data, never versioned.
+*.sqlite
+*.sqlite3
+*.db
+*.sql.gz
+
+# Agent/skill tooling. Local workflow, not part of the product.
+.agents/
+.claude/skills/
+.claude/settings.local.json
+skills-lock.json
+vibe-check-report.md
+pathfinder-overview.txt

@@ -33,6 +33,10 @@ const CourseAdvisorPage = lazy(() => import('./pages/CourseAdvisorPage'));
 const SchedulePage = lazy(() => import('./pages/SchedulePage'));
 const StudyPage = lazy(() => import('./pages/StudyPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+// Public legal pages. Lazy: a visitor who never opens them should not pay for
+// them, but they must be reachable without an account.
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
+const TermsPage = lazy(() => import('./pages/TermsPage'));
 
 function RouteFallback() {
   return (
@@ -106,6 +110,8 @@ export default function App() {
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/verify-email" element={<VerifyEmailPage />} />
+              <Route path="/privacy" element={<PrivacyPage />} />
+              <Route path="/terms" element={<TermsPage />} />
 
               {/* Onboarding (protected, no shell) */}
               <Route

@@ -20,7 +20,11 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
+import httpx
 import pytest
+from groq import APIConnectionError, APIStatusError
+
+from app.ai.client import AIUnavailableError
 
 from app.ai.research_client import (
     ResearchResult,
@@ -91,7 +95,7 @@ def _rule(**over) -> RequirementRule:
         basis=BASIS_STATED,
         source_urls=[{"uri": "https://calendars.students.yorku.ca/x", "domain": "yorku.ca"}],
         extracted_at=datetime.now(timezone.utc),
-        extracted_by="gemini-2.5-flash",
+        extracted_by="groq/compound",
     )
     base.update(over)
     return RequirementRule(**base)
@@ -122,7 +126,7 @@ def _grounded(text: str, *, domain="yorku.ca") -> ResearchResult:
                 domain=domain,
             )
         ],
-        model="gemini-2.5-flash",
+        model="groq/compound",
     )
 
 
@@ -196,7 +200,7 @@ async def test_research_response_stores_the_urls_it_actually_retrieved(db, monke
     assert written == 1
     rules = await get_rules(YORK, CS, db)
     assert rules[0].source_urls[0]["domain"] == "yorku.ca"
-    assert rules[0].extracted_by == "gemini-2.5-flash"
+    assert rules[0].extracted_by == "groq/compound"
 
 
 # ── 2. Exclusions are not options ────────────────────────────────────
@@ -548,6 +552,64 @@ async def test_a_crashing_job_does_not_kill_the_worker(db, monkeypatch):
     assert "provider exploded" in job.last_error
 
 
+async def _run_failing_job(db, monkeypatch, exc):
+    """Claim and run one job whose research call raises ``exc``."""
+    async def _boom(*a, **kw):
+        raise exc
+
+    monkeypatch.setattr(runner, "run_research", _boom)
+    job = ProgramResearchJob(
+        university=YORK, program=CS, status=JOB_PENDING, source_urls=[REQ_URL]
+    )
+    db.add(job)
+    await db.commit()
+    assert await runner.process_once(db) is True
+    await db.refresh(job)
+    return job
+
+
+def _api_status_error(status):
+    """A groq APIStatusError carrying ``status``, built without a live response."""
+    exc = APIStatusError.__new__(APIStatusError)
+    Exception.__init__(exc, f"HTTP {status}")
+    exc.status_code = status
+    return exc
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        AIUnavailableError(),
+        APIConnectionError(request=httpx.Request("POST", "https://api.groq.com")),
+        _api_status_error(429),
+        _api_status_error(503),
+    ],
+)
+async def test_a_transient_failure_does_not_burn_an_attempt(db, monkeypatch, exc):
+    """A thirty-second provider outage must not spend one of three lifetime
+    attempts — that would retire a program over an error that fixes itself."""
+    job = await _run_failing_job(db, monkeypatch, exc)
+    assert job.status == JOB_FAILED  # resolves the UI, never a stuck spinner
+    assert job.attempts == 0
+
+
+async def test_a_permanent_failure_does_burn_an_attempt(db, monkeypatch):
+    """The other direction matters just as much: refunding a dead URL would
+    retry it forever."""
+    job = await _run_failing_job(db, monkeypatch, ValueError("that page is gone"))
+    assert job.status == JOB_FAILED
+    assert job.attempts == 1
+
+
+async def test_an_oversized_request_names_the_setting_that_fixes_it(db, monkeypatch):
+    """413 looks like a rate limit and is really a misconfiguration: Groq applies
+    its per-minute allowance per REQUEST, so the same job is refused every time.
+    Retrying cannot help, and the fix is entirely operator-side."""
+    job = await _run_failing_job(db, monkeypatch, _api_status_error(413))
+    assert job.attempts == 1  # permanent, not retried
+    assert "GROQ_MAX_REQUEST_TOKENS" in job.last_error
+
+
 async def test_a_repeatedly_failing_program_stops_being_retried(db, monkeypatch):
     """One unreadable university must not consume the research budget forever."""
     monkeypatch.setattr(runner, "is_research_enabled", lambda: True)
@@ -637,87 +699,80 @@ async def test_research_writes_no_catalog_rows(db, monkeypatch):
 # ── Research-client plumbing ─────────────────────────────────────────
 
 
-def test_grounding_metadata_is_read_defensively():
-    """Absent grounding must read as "nothing retrieved", not AttributeError —
+def test_executed_tools_are_read_defensively():
+    """Absent tool metadata must read as "nothing retrieved", not AttributeError —
     the two would be handled very differently upstream."""
     from app.ai.research_client import _collect_sources
 
     assert _collect_sources(SimpleNamespace()) == ([], [])
-    assert _collect_sources(SimpleNamespace(candidates=[SimpleNamespace(grounding_metadata=None)])) == ([], [])
+    assert _collect_sources(
+        SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace())])
+    ) == ([], [])
 
-    chunk = SimpleNamespace(
-        web=SimpleNamespace(uri="https://yorku.ca/a", title="York", domain="yorku.ca")
-    )
     response = SimpleNamespace(
-        candidates=[
+        choices=[
             SimpleNamespace(
-                grounding_metadata=SimpleNamespace(
-                    grounding_chunks=[chunk, chunk],  # duplicate uri
-                    web_search_queries=["york cs requirements"],
+                message=SimpleNamespace(
+                    executed_tools=[
+                        SimpleNamespace(
+                            arguments='{"query": "york cs requirements"}',
+                            search_results={
+                                "results": [
+                                    {"url": "https://calendars.yorku.ca/a"},
+                                    {"url": "https://calendars.yorku.ca/a"},  # dupe
+                                ]
+                            },
+                        )
+                    ]
                 )
             )
         ]
     )
     sources, queries = _collect_sources(response)
-    assert [s.uri for s in sources] == ["https://yorku.ca/a"]
+    assert [s.uri for s in sources] == ["https://calendars.yorku.ca/a"]
+    assert [s.domain for s in sources] == ["calendars.yorku.ca"]
     assert queries == ["york cs requirements"]
 
 
-def _fake_genai_urls(text, url_statuses):
-    """A response shaped like a url_context run: per-URL retrieval statuses."""
-    candidate = SimpleNamespace(
-        content=SimpleNamespace(parts=[SimpleNamespace(text=text)]),
-        grounding_metadata=None,
-        url_context_metadata=SimpleNamespace(
-            url_metadata=[
-                SimpleNamespace(
-                    retrieved_url=u,
-                    url_retrieval_status=SimpleNamespace(
-                        name=f"URL_RETRIEVAL_STATUS_{s}"
-                    ),
-                )
-                for u, s in url_statuses
-            ]
-        ),
-    )
-    return SimpleNamespace(
-        models=SimpleNamespace(
-            generate_content=lambda **kw: SimpleNamespace(text=text, candidates=[candidate])
-        )
-    )
+def _patch_fetch(monkeypatch, pages: dict):
+    """Stand in for the real HTTPS fetch. ``pages`` maps URL -> text, and a URL
+    absent from it is a page that could not be read."""
+    import app.ai.research_client as rc
+
+    async def _fake_fetch(url):
+        text = pages.get(url)
+        return (text, "") if text else ("", "HTTP 404")
+
+    monkeypatch.setattr(rc, "fetch_page", _fake_fetch)
 
 
-def _fake_genai(text, chunks):
-    """A stand-in for the native Gemini client, shaped like a real response."""
-    candidate = SimpleNamespace(
-        content=SimpleNamespace(parts=[SimpleNamespace(text=text)]),
-        grounding_metadata=SimpleNamespace(
-            grounding_chunks=[
-                SimpleNamespace(web=SimpleNamespace(uri=u, title=t, domain=d))
-                for u, t, d in chunks
-            ],
-            web_search_queries=[],
+def _patch_model(monkeypatch, text):
+    """Stand in for the Groq call, shaped like a real chat completion."""
+    import app.ai.research_client as rc
+
+    async def _fake_acomplete(client, **kwargs):
+        _fake_acomplete.kwargs = kwargs
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=text))]
         )
-        if chunks is not None
-        else None,
-    )
-    return SimpleNamespace(
-        models=SimpleNamespace(
-            generate_content=lambda **kw: SimpleNamespace(text=text, candidates=[candidate])
-        )
-    )
+
+    monkeypatch.setattr(rc, "is_research_enabled", lambda: True)
+    monkeypatch.setattr(rc, "get_research_client", lambda: object())
+    monkeypatch.setattr(rc, "acomplete", _fake_acomplete)
+    return _fake_acomplete
 
 
 async def test_research_call_refuses_an_answer_with_no_retrieval(monkeypatch):
     """The guard inside `research()` itself, not just the callers'.
 
-    An answer with no grounding chunks came from the model's memory. It reads
+    An answer with no page behind it came from the model's memory. It reads
     identically to one taken off the university's calendar, and nothing can check
     it afterwards, so it never leaves this function.
     """
     import app.ai.research_client as rc
 
-    monkeypatch.setattr(rc, "get_research_client", lambda: _fake_genai("{}", []))
+    _patch_fetch(monkeypatch, {})
+    _patch_model(monkeypatch, "{}")
     with pytest.raises(UngroundedResearchError):
         await rc.research("anything")
 
@@ -725,39 +780,163 @@ async def test_research_call_refuses_an_answer_with_no_retrieval(monkeypatch):
 async def test_research_call_returns_text_and_sources_when_grounded(monkeypatch):
     import app.ai.research_client as rc
 
-    monkeypatch.setattr(
-        rc,
-        "get_research_client",
-        lambda: _fake_genai(
-            '{"rules": []}', [("https://yorku.ca/a", "York", "yorku.ca")]
-        ),
-    )
-    result = await rc.research("anything")
+    _patch_fetch(monkeypatch, {"https://yorku.ca/a": "requirements prose"})
+    _patch_model(monkeypatch, '{"rules": []}')
+    result = await rc.research("anything", urls=["https://yorku.ca/a"])
     assert result.text == '{"rules": []}'
     assert result.source_urls == ["https://yorku.ca/a"]
     assert result.domains == {"yorku.ca"}
 
 
+async def test_the_model_is_given_the_page_text_and_no_browsing(monkeypatch):
+    """The grounding guarantee in one assertion: the retrieved text is what the
+    model is asked about, and the model it is asked of cannot retrieve anything
+    of its own, so nothing uncited can enter a cited answer."""
+    import app.ai.research_client as rc
+
+    _patch_fetch(monkeypatch, {"https://yorku.ca/a": "6.00 credits in AP/HUMA"})
+    spy = _patch_model(monkeypatch, '{"rules": []}')
+    await rc.research("extract", urls=["https://yorku.ca/a"])
+
+    prompt = spy.kwargs["messages"][-1]["content"]
+    assert "6.00 credits in AP/HUMA" in prompt
+    assert "https://yorku.ca/a" in prompt
+    # A compound system would browse on its own initiative mid-extraction.
+    assert "compound" not in spy.kwargs["model"]
+
+
+async def test_a_page_too_big_for_the_budget_is_trimmed_not_refused(monkeypatch):
+    """Groq applies its per-minute allowance per REQUEST, so an oversized prompt
+    is a flat 413 rather than a wait. A trimmed page yields fewer buckets; an
+    unsent one leaves the program uncovered forever."""
+    import app.ai.research_client as rc
+
+    monkeypatch.setattr(rc.settings, "GROQ_MAX_REQUEST_TOKENS", 8000)
+    monkeypatch.setattr(rc.settings, "RESEARCH_MAX_PAGE_CHARS", 48_000)
+    huge = "AP/HUMA requirement prose. " * 5000
+    _patch_fetch(monkeypatch, {"https://yorku.ca/a": huge})
+    spy = _patch_model(monkeypatch, '{"rules": []}')
+    await rc.research("extract", urls=["https://yorku.ca/a"])
+
+    prompt = spy.kwargs["messages"][-1]["content"]
+    assert len(prompt) < len(huge)
+    # Truncating silently would let the model report an absent bucket as absent.
+    assert "truncated" in prompt
+    assert spy.kwargs["max_tokens"] <= 8000
+
+
+def test_the_page_budget_is_split_across_pages(monkeypatch):
+    """Naming a second URL must not silently push the first out of the request."""
+    import app.ai.research_client as rc
+
+    monkeypatch.setattr(rc.settings, "GROQ_MAX_REQUEST_TOKENS", 8000)
+    monkeypatch.setattr(rc.settings, "RESEARCH_MAX_PAGE_CHARS", 48_000)
+    budget = rc.page_budget_chars()
+    sources = [rc._source_for("https://yorku.ca/a"), rc._source_for("https://yorku.ca/b")]
+    pages = {s.uri: "x" * budget for s in sources}
+    block = rc._page_block(sources, pages)
+    assert "https://yorku.ca/a" in block and "https://yorku.ca/b" in block
+    assert block.count("x") <= budget + 10
+
+
+def test_an_unconstrained_account_keeps_the_flat_page_cap(monkeypatch):
+    import app.ai.research_client as rc
+
+    monkeypatch.setattr(rc.settings, "GROQ_MAX_REQUEST_TOKENS", 0)
+    monkeypatch.setattr(rc.settings, "RESEARCH_MAX_PAGE_CHARS", 48_000)
+    assert rc.page_budget_chars() == 48_000
+
+
 async def test_research_call_refuses_an_empty_answer(monkeypatch):
     import app.ai.research_client as rc
 
-    monkeypatch.setattr(
-        rc,
-        "get_research_client",
-        lambda: _fake_genai("", [("https://yorku.ca/a", "York", "yorku.ca")]),
-    )
+    _patch_fetch(monkeypatch, {"https://yorku.ca/a": "requirements prose"})
+    _patch_model(monkeypatch, "")
     with pytest.raises(UngroundedResearchError):
-        await rc.research("anything")
+        await rc.research("anything", urls=["https://yorku.ca/a"])
 
 
 async def test_research_is_disabled_without_a_key(monkeypatch):
     import app.ai.research_client as rc
 
-    monkeypatch.setattr(rc.settings, "GEMINI_API_KEY", "")
+    monkeypatch.setattr(rc.settings, "GROQ_API_KEY", "")
     rc.reset_research_client()
     assert rc.is_research_enabled() is False
     with pytest.raises(rc.ResearchDisabledError):
         rc.get_research_client()
+
+
+# ── Retrieval: what counts as having read a page ─────────────────────
+
+
+def test_html_is_reduced_to_readable_prose():
+    from app.ai.research_client import html_to_text
+
+    text = html_to_text(
+        "<html><head><title>x</title><style>.a{color:red}</style></head>"
+        "<body><nav>Home About</nav><h1>Requirements</h1>"
+        "<ul><li>6.00 credits in AP/HUMA</li><li>6.00 in AP/SOSC</li></ul>"
+        "<script>track()</script></body></html>"
+    )
+    assert "color:red" not in text
+    assert "track()" not in text
+    assert "Home About" not in text
+    # The list must survive as lines; collapsed into one run the buckets stop
+    # being separable and the model merges them.
+    assert "6.00 credits in AP/HUMA" in text
+    assert "6.00 in AP/SOSC" in text
+
+
+async def test_a_soft_404_is_a_failed_fetch_not_a_page(monkeypatch):
+    """University calendars answer 200 OK with "Page Not Found" constantly.
+    Counting that as a retrieval lets the model 'cite' a page that said nothing."""
+    import app.ai.research_client as rc
+
+    monkeypatch.setattr(
+        rc,
+        "_fetch_sync",
+        lambda url: "<html><body><h1>Page Not Found</h1>" + "<p>x</p>" * 200 + "</body></html>",
+    )
+    text, error = await rc.fetch_page("https://yorku.ca/gone")
+    assert text == ""
+    assert error
+
+
+async def test_a_page_with_no_readable_text_is_a_failed_fetch(monkeypatch):
+    """A JS-rendered page returns nothing but its own chrome — indistinguishable
+    from a real page to anything that only checks the status code."""
+    import app.ai.research_client as rc
+
+    monkeypatch.setattr(rc, "_fetch_sync", lambda url: "<html><body><div></div></body></html>")
+    text, error = await rc.fetch_page("https://sfu.ca/js-only")
+    assert (text, bool(error)) == ("", True)
+
+
+async def test_fetch_reports_failure_instead_of_raising(monkeypatch):
+    """A page that cannot be read is an outcome to report, not an exception that
+    should take down a research job."""
+    import app.ai.research_client as rc
+
+    def _boom(url):
+        raise ValueError("HTTP 500")
+
+    monkeypatch.setattr(rc, "_fetch_sync", _boom)
+    assert await rc.fetch_page("https://yorku.ca/x") == ("", "HTTP 500")
+
+
+@pytest.mark.parametrize(
+    "host",
+    ["localhost", "127.0.0.1", "169.254.169.254", "10.0.0.1"],
+)
+def test_fetching_refuses_a_private_address(host):
+    """The half a string check cannot do: a public hostname whose DNS record
+    points inside the network looks ordinary until it is resolved. Re-run for
+    every redirect hop, because a redirect is a target someone else chose."""
+    from app.ai.research_client import _check_fetch_target
+
+    with pytest.raises(ValueError):
+        _check_fetch_target(f"http://{host}/x")
+
 
 
 @pytest.mark.parametrize(
@@ -914,11 +1093,8 @@ async def test_url_retrieval_failure_names_the_url_that_could_not_be_read(monkey
     able to say why — and it is usually just a moved page."""
     import app.ai.research_client as rc
 
-    monkeypatch.setattr(
-        rc,
-        "get_research_client",
-        lambda: _fake_genai_urls("{}", [("https://yorku.ca/gone", "ERROR")]),
-    )
+    _patch_fetch(monkeypatch, {})
+    _patch_model(monkeypatch, "{}")
     with pytest.raises(UngroundedResearchError) as exc:
         await rc.research("x", urls=["https://yorku.ca/gone"])
     assert "yorku.ca/gone" in str(exc.value)
@@ -926,17 +1102,12 @@ async def test_url_retrieval_failure_names_the_url_that_could_not_be_read(monkey
 
 async def test_only_successfully_retrieved_pages_become_citations(monkeypatch):
     """A model handed an unreachable URL will still answer, describing the page
-    from its address alone. Only SUCCESS counts as having read something."""
+    from its address alone. Only a page whose text we actually hold is a
+    citation."""
     import app.ai.research_client as rc
 
-    monkeypatch.setattr(
-        rc,
-        "get_research_client",
-        lambda: _fake_genai_urls(
-            '{"rules": []}',
-            [("https://yorku.ca/ok", "SUCCESS"), ("https://yorku.ca/bad", "ERROR")],
-        ),
-    )
+    _patch_fetch(monkeypatch, {"https://yorku.ca/ok": "requirements prose"})
+    _patch_model(monkeypatch, '{"rules": []}')
     result = await rc.research("x", urls=["https://yorku.ca/ok", "https://yorku.ca/bad"])
     assert result.source_urls == ["https://yorku.ca/ok"]
 

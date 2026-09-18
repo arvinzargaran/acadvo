@@ -119,12 +119,25 @@ async def poisoned_user(db):
         status=CourseStatus.completed, grade=payload, term=payload,
     ))
 
-    project = Project(id=uuid.uuid4(), user_id=user.id, name=payload, priority=1)
+    # `tech_stack` is written by the `create_project` tool from model output,
+    # which itself derives from parsed resumes — and it lands in the SYSTEM
+    # prompt, the one holding the write tools. The fixture did not set it, which
+    # is precisely why it went unsanitized and unnoticed for so long.
+    project = Project(
+        id=uuid.uuid4(), user_id=user.id, name=payload, priority=1, tech_stack=payload
+    )
     db.add(project)
     await db.flush()
     db.add(Milestone(id=uuid.uuid4(), project_id=project.id, title=payload, order_index=0))
 
-    db.add(CareerTarget(id=uuid.uuid4(), user_id=user.id, company_name=payload))
+    db.add(CareerTarget(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        company_name=payload,
+        role_type=payload,
+        location=payload,
+        target_term=payload,
+    ))
     await db.commit()
     return user
 

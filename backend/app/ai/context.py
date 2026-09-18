@@ -272,7 +272,12 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
         for p in projects:
             proj_lines.append(f"\nProject: {sanitize(p.name)} (Priority {p.priority}) — STATUS: {p.status.value}")
             if p.tech_stack:
-                proj_lines.append(f"  Tech: {p.tech_stack}")
+                # Sanitized like every other stored field: `tech_stack` is
+                # written by the `create_project` tool from model output, which
+                # in turn comes from a résumé the user uploaded — so it is
+                # document-derived text landing in the system prompt that holds
+                # the write tools.
+                proj_lines.append(f"  Tech: {sanitize(p.tech_stack)}")
 
             if p.milestones:
                 proj_lines.append("  Milestones:")
@@ -297,13 +302,17 @@ async def build_system_prompt(user_id: uuid.UUID, db: AsyncSession) -> str:
             "=" * 50,
         ]
         for i, ct in enumerate(career_targets, 1):
+            # Every one of these is free text the student (or a tool acting on a
+            # parsed document) wrote. `company_name` was sanitized and its three
+            # neighbours were not, which is the whole gap: a newline in any of
+            # them opens a line of its own in the system prompt just as well.
             parts = [f"{i}. {sanitize(ct.company_name)}"]
             if ct.role_type:
-                parts.append(f"— {ct.role_type}")
+                parts.append(f"— {sanitize(ct.role_type)}")
             if ct.location:
-                parts.append(f"— {ct.location}")
+                parts.append(f"— {sanitize(ct.location)}")
             if ct.target_term:
-                parts.append(f"— {ct.target_term}")
+                parts.append(f"— {sanitize(ct.target_term)}")
             parts.append(f"— {ct.status.value}")
             career_lines.append(" ".join(parts))
 
