@@ -334,7 +334,7 @@ export default function SmartInsightsFeed({ summary, courses, projects, events, 
                 onClick={() => goToSlide(i)}
                 className={`rounded-full transition-all duration-300 ${
                   i === activeIndex % count
-                    ? `w-5 h-1.5 ${colors.dot.replace('bg-', 'bg-')}`
+                    ? `w-5 h-1.5 ${colors.dot}`
                     : 'w-1.5 h-1.5 bg-dark-600 hover:bg-dark-500'
                 }`}
               />

@@ -34,7 +34,19 @@ async def send_email(to: str, subject: str, body: str) -> None:
     """Best-effort send. Never raises to the caller — a failed email must not
     break registration or leak (via error timing) whether an account exists."""
     if not settings.SMTP_HOST:
-        logger.info("[email disabled] To: %s | Subject: %s\n%s", to, subject, body)
+        # The body carries live verification and password-reset links. In
+        # development, reading that link out of the console IS the delivery
+        # mechanism, so the body is logged in full. With DEBUG off — the case
+        # ALLOW_NO_SMTP permits — it would instead sit in clear text in whatever
+        # ships the logs, so only the envelope is recorded.
+        if settings.DEBUG:
+            logger.info("[email disabled] To: %s | Subject: %s\n%s", to, subject, body)
+        else:
+            logger.info(
+                "[email disabled] To: %s | Subject: %s | body withheld (DEBUG off)",
+                to,
+                subject,
+            )
         return
     try:
         await asyncio.to_thread(_send_smtp, to, subject, body)
