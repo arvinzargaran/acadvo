@@ -1,0 +1,30 @@
+# gitleaks configuration for the secret-scan job in .github/workflows/ci.yml.
+#
+# The default rule set is kept in full; this file only records the handful of
+# literals gitleaks' `generic-api-key` heuristic flags that are not secrets.
+#
+# Deliberately allowlisted by EXACT LITERAL rather than by path. Excluding
+# `backend/tests/` wholesale would be easier and would also mean a real
+# credential pasted into a test file is never reported again — which is one of
+# the more common ways a key actually escapes.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Non-secret literals: CI dummy values and test fixtures"
+
+regexes = [
+  # The CI job needs *a* JWT secret for the app to boot; the app enforces a
+  # 32-character minimum. This value exists only inside the GitHub runner,
+  # names itself as a dummy, and signs nothing that outlives the job.
+  '''ci-dummy-jwt-secret-key-at-least-32-characters-long''',
+
+  # Password fixtures from backend/tests. Every one is a throwaway used to
+  # register a test account against an ephemeral database.
+  '''(Old|New)Passphrase(123|456)''',
+  '''correct horse battery staple''',
+  '''securepass123''',
+  '''testpass123''',
+  '''wrong ?(guess here|pass|password)''',
+]
