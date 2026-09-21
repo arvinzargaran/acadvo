@@ -4,11 +4,17 @@
 
 **AI-powered academic and career advisor for Canadian university students.**
 
+![A scroll through the Acadvo landing page, from the hero to pricing and FAQ](docs/media/landing.gif)
+
+*A full scroll of the landing page. Also available as [`docs/media/landing.mp4`](docs/media/landing.mp4)
+at full speed — GitHub renders a committed mp4 as a link rather than a player, so the GIF is what plays
+here. Both are regenerated with `node scripts/record-landing.mjs && scripts/convert-landing.sh`.*
+
 Acadvo helps students plan their degrees strategically, track career targets, build portfolios, and prepare for internships — with an AI advisor that doesn't just chat, but takes real actions. It knows your courses, grades, degree requirements, projects, and career goals, and uses that full picture to add courses to your plan, flag risks, build timelines, and generate semester-by-semester schedules aligned with your university's course catalog. Built specifically for the Canadian university system, with GPA and grading-scale support for 16 Canadian universities. Verified course catalogs — with prerequisites and enrolment gates — are ingested from each university's own catalog source: **York** (public Kuali catalog API, whole university), the **University of Toronto** (public calendar JSON:API, all three campuses), **Simon Fraser** (public course-outlines API), and the **University of Waterloo** (official Open Data API — needs a free `WATERLOO_API_KEY`). Adapters never fabricate a course: a prerequisite is only ever a code the university itself published, and a school with no catalog degrades honestly instead of guessing. Every source was assessed before it was used, and the ones deliberately *not* used are recorded with the reason — see `backend/app/ingest/SOURCES.md`.
 
 ## Screenshots
 
-A seeded demo account, so every number below comes from the app rather than a mockup.
+Behind the sign-in, from a seeded demo account — so every number here comes from the app rather than a mockup.
 
 ![The dashboard: co-op readiness, cumulative GPA on York's 9-point scale, and degree progress by requirement bucket](docs/screenshots/dashboard.png)
 

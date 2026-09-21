@@ -67,3 +67,7 @@ id_ed25519
 
 # Superseded planning notes kept on disk for reference, not versioned.
 pathfinder-overview.txt
+
+# Intermediate recording from scripts/record-landing.mjs. The committed GIF and
+# mp4 are generated from it; the raw capture is not worth versioning.
+docs/media/*.webm

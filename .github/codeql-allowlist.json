@@ -12,6 +12,12 @@
       "path": "backend/app/services/email.py",
       "reason": "With no SMTP host configured, send_email logs the message body, which holds a verification or password-reset link. This is the development mail transport: reading that link out of the console is the only way to complete either flow locally. The branch is gated on DEBUG, and with DEBUG off only the envelope is logged.",
       "expires": "2027-03-31"
+    },
+    {
+      "rule": "py/clear-text-logging-sensitive-data",
+      "path": "backend/app/scripts/seed_demo.py",
+      "reason": "The seeding script prints the demo account's password so whoever ran it can sign in. The password is a constant in that same file and is documented in the README: it is a published demo credential by design, not a secret, and printing it discloses nothing that reading the script does not. The script refuses to run against a non-DEBUG instance without an explicit override.",
+      "expires": "2027-03-31"
     }
   ]
 }
