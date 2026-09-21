@@ -192,7 +192,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # CodeQL needs this to upload findings to the Security tab.
+      # The CodeQL action reads its own workflow run through the Actions API.
+      # On a public repository that read is allowed implicitly; on a private one
+      # it is not, so without this the analyze step dies with "Resource not
+      # accessible by integration" no matter what it is asked to do.
+      actions: read
+      # Retained so the step can still upload if code scanning is ever available
+      # on this repository; the gate below does not depend on it.
       security-events: write
 
     steps:
