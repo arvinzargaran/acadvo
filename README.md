@@ -22,6 +22,13 @@ Behind the sign-in, from a seeded demo account — so every number here comes fr
 
 ![The career pipeline: target companies tracked from first look to offer, with the deadline timeline below](docs/screenshots/career.png)
 
+![The AI advisor answering which course to add for Fall 2026, citing the student's major GPA against the 4.50 enrolment gate, their unmet prerequisites, and the stack of a project already on their profile](docs/screenshots/ai-advisor.png)
+
+The advisor answer above is a real one, not a mock-up. It reaches that
+recommendation by reading the student's own record: the EECS-major GPA against
+the 4.50 gate that governs 3000/4000-level enrolment, which prerequisites are
+already satisfied, and the technology in a project sitting on their profile.
+
 More in [`docs/screenshots/`](docs/screenshots). They are regenerated from a
 running instance with `node scripts/capture-screenshots.mjs`, so they can be
 refreshed in one command instead of drifting away from the UI.
@@ -32,7 +39,7 @@ refreshed in one command instead of drifting away from the UI.
 |-------|-----------|
 | **Backend** | Python 3.12, FastAPI, SQLAlchemy 2.0 (async), PostgreSQL, Alembic |
 | **Frontend** | React 19, Vite, Tailwind CSS, React Router v8, Axios |
-| **AI** | Groq only, and it runs on the free tier — `openai/gpt-oss-120b` function calling (16 tools), `qwen/qwen3.6-27b` for image input, PDF/spreadsheet text extraction. Requirement-rule research reads the university's own page directly over HTTPS and gives the model only that text, so nothing here is metered beyond the Groq call itself |
+| **AI** | Groq only, and it runs on the free tier — `openai/gpt-oss-120b` function calling (16 tools), `qwen/qwen3.8-27b` for image input, PDF/spreadsheet text extraction. Requirement-rule research reads the university's own page directly over HTTPS and gives the model only that text, so nothing here is metered beyond the Groq call itself |
 | **Auth** | JWT (HS256) with refresh token rotation, bcrypt password hashing |
 | **Infrastructure** | Docker Compose (PostgreSQL + backend + frontend) |
 
@@ -166,7 +173,7 @@ Make sure PostgreSQL is running and `DATABASE_URL` in `.env` points to it.
 | `GROQ_TIMEOUT_SECONDS` | Wall-clock ceiling on one model call. Raise only if a legitimate call is being cut off — the app retries transient failures itself, and an unbounded call holds a worker thread the rest of the API is queueing for | No | `30.0` |
 | `GROQ_SDK_MAX_RETRIES` | Retries the Groq SDK performs on top of the app's own retry loop. `0` on purpose: two retry layers multiply (3 × 3 attempts × the timeout above) | No | `0` |
 | `GROQ_MODEL` | Chat/JSON model id. Groq retires ids — check `/v1/models` before blaming the app | No | `openai/gpt-oss-120b` |
-| `GROQ_VISION_MODEL` | Model used for image input (scanned checklists, résumé images) | No | `qwen/qwen3.6-27b` |
+| `GROQ_VISION_MODEL` | Model used for image input (scanned checklists, résumé images) | No | `qwen/qwen3.8-27b` |
 | `GROQ_VISION_REASONING_EFFORT` | `none` or `default` for Qwen; empty for a model that rejects the parameter | No | `none` |
 | `GROQ_JSON_REASONING_EFFORT` | Reasoning effort on JSON-producing calls (plans, search, parsing). Empty omits the parameter | No | `low` |
 | `RESEARCH_MODEL` | Model used to extract requirement rules from a fetched page | No | `openai/gpt-oss-120b` |
