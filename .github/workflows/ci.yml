@@ -236,6 +236,12 @@ jobs:
         with:
           upload: false
           output: codeql-results
+          # The action otherwise uploads the CodeQL database to GitHub, a
+          # feature this repository does not have while it is private. The
+          # upload cannot succeed, so it retries four times and gives up,
+          # costing several minutes of a job that has already finished its
+          # real work — and those minutes are billed on a private repository.
+          upload-database: false
 
       - name: Fail on CodeQL findings
         run: python3 .github/scripts/codeql_gate.py codeql-results
