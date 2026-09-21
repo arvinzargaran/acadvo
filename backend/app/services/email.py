@@ -40,15 +40,17 @@ async def send_email(to: str, subject: str, body: str) -> None:
         # ALLOW_NO_SMTP permits — it would instead sit in clear text in whatever
         # ships the logs, so only the envelope is recorded.
         if settings.DEBUG:
-            # codeql[py/clear-text-logging-sensitive-data]
-            # Accepted, not overlooked. The body holds a reset or verification
-            # link, and in development the console IS the mail transport — there
-            # is no other way for a developer to complete either flow locally.
-            # DEBUG defaults to False and is the flag the app treats as "this is
-            # a real deployment" — it also gates /docs and the cookie guards in
-            # main.py. Nothing forbids setting it True in production, so this is
-            # as safe as that switch is: turning it on there exposes the API docs
-            # and relaxes the cookie checks long before it reaches this line.
+            # Accepted, not overlooked: CodeQL flags this line, and the reason
+            # and expiry are recorded in .github/codeql-allowlist.json.
+            #
+            # The body holds a verification or password-reset link, and in
+            # development the console is the mail transport — there is no other
+            # way to complete either flow locally. DEBUG defaults to False and
+            # is what the app treats as "this is a real deployment"; it also
+            # gates /docs and the cookie checks in main.py. Nothing forbids
+            # setting it True in production, so this is exactly as safe as that
+            # switch: turning it on there exposes the API docs and relaxes the
+            # cookie guards long before it reaches this line.
             logger.info("[email disabled] To: %s | Subject: %s\n%s", to, subject, body)
         else:
             logger.info(

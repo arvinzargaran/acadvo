@@ -14,6 +14,7 @@ findings.
 
 from __future__ import annotations
 
+import datetime
 import glob
 import json
 import os
@@ -42,14 +43,52 @@ def location_of(result: dict) -> str:
         return "<unknown location>"
 
 
+def load_allowlist(path: str) -> tuple[list[dict], list[str]]:
+    """Return (active entries, expired-entry complaints).
+
+    An expired entry is a failure, not a lapse back to silence: the whole point
+    of the expiry is that somebody looks again, and a gate that quietly forgets
+    an accepted risk once the date passes is worse than one that never had it.
+    """
+    if not os.path.exists(path):
+        return [], []
+    with open(path, encoding="utf-8") as handle:
+        data = json.load(handle)
+    today = datetime.date.today().isoformat()
+    active, expired = [], []
+    for entry in data.get("allow", []):
+        if entry.get("expires") and entry["expires"] < today:
+            expired.append(
+                f"Allowlist entry for {entry.get('rule')} ({entry.get('path')}) "
+                f"expired on {entry['expires']}. Re-check whether it still holds, "
+                f"then update or remove it."
+            )
+            continue
+        active.append(entry)
+    return active, expired
+
+
+def allowed_by(entry_list: list[dict], rule_id: str, location: str) -> dict | None:
+    """Match a finding against the allowlist on rule AND path, never rule alone."""
+    path = location.rsplit(":", 1)[0]
+    for entry in entry_list:
+        if entry.get("rule") == rule_id and entry.get("path") == path:
+            return entry
+    return None
+
+
 def main(directory: str) -> int:
     files = sorted(glob.glob(os.path.join(directory, "*.sarif")))
     if not files:
         print(f"No SARIF files in {directory!r} — the analysis did not produce output.")
         return 1
 
+    allowlist_path = os.path.join(os.path.dirname(__file__), os.pardir, "codeql-allowlist.json")
+    allowed, expired = load_allowlist(os.path.normpath(allowlist_path))
+
     errors: list[str] = []
     suppressed: list[str] = []
+    accepted: list[str] = []
     lesser = 0
 
     for path in files:
@@ -64,6 +103,13 @@ def main(directory: str) -> int:
                 # it the only way past a reviewed, accepted finding is to delete
                 # the check for everyone. Suppressions are printed, so an
                 # accepted finding stays visible instead of disappearing.
+                location = location_of(result)
+                entry = allowed_by(allowed, rule_id, location)
+                if entry is not None:
+                    accepted.append(
+                        f"accepted  | {rule_id} | {location} | expires {entry.get('expires')}"
+                    )
+                    continue
                 if result.get("suppressions"):
                     suppressed.append(
                         f"suppressed | {rule_id} | {location_of(result)}"
@@ -78,6 +124,11 @@ def main(directory: str) -> int:
                     lesser += 1
                     print(line)
 
+    if accepted:
+        print("\nAccepted by .github/codeql-allowlist.json:\n")
+        for line in accepted:
+            print(f"  {line}")
+
     if suppressed:
         print("\nSuppressed by an in-source `# codeql[...]` comment:\n")
         for line in suppressed:
@@ -85,14 +136,22 @@ def main(directory: str) -> int:
 
     print(
         f"\nScanned {len(files)} SARIF file(s): {len(errors)} error, "
-        f"{lesser} warning/note, {len(suppressed)} suppressed."
+        f"{lesser} warning/note, {len(accepted)} accepted, {len(suppressed)} suppressed."
     )
+    if expired:
+        print("\nExpired allowlist entries:\n")
+        for line in expired:
+            print(f"  {line}")
+
     if errors:
         print("\nCodeQL found error-severity issues:\n")
         for line in errors:
             print(f"  {line}")
+    if errors or expired:
+        # An expired entry fails on its own, with no error findings at all:
+        # the acceptance has run out, and that is the signal to re-check it.
         return 1
-    print("No error-severity CodeQL findings.")
+    print("No unaccepted error-severity CodeQL findings.")
     return 0
 
 
