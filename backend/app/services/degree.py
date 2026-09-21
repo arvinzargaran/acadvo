@@ -1,5 +1,4 @@
 import logging
-import re
 import uuid
 
 from fastapi import HTTPException, status
@@ -22,18 +21,6 @@ from app.schemas.degree import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _for_log(value: str | None) -> str:
-    """Flatten user-supplied text before it reaches a log line.
-
-    A course code comes straight from the request body, so a newline in it
-    would let a caller write what looks like a second log entry — forged
-    timestamps, a fake ERROR, anything the log reader would believe.
-    """
-    if value is None:
-        return "<none>"
-    return re.sub(r"[\r\n\t]+", " ", value)[:120]
 
 
 
@@ -130,7 +117,11 @@ async def create_course(user_id: uuid.UUID, data: CourseCreate, db: AsyncSession
         await db.commit()
     except Exception as exc:
         await db.rollback()
-        logger.error("Failed to create course %s: %s", _for_log(data.course_code), exc)
+        # The course code is deliberately absent: it is user-supplied text, and
+        # no amount of flattening makes a log line built from it something a
+        # reader can trust. The user id identifies the row well enough to find
+        # the request, and the exception says what actually went wrong.
+        logger.error("Failed to create course for user %s: %s", user_id, exc)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Failed to save course '{data.course_code}'. Please check the values and try again.",

@@ -49,6 +49,7 @@ def main(directory: str) -> int:
         return 1
 
     errors: list[str] = []
+    suppressed: list[str] = []
     lesser = 0
 
     for path in files:
@@ -58,6 +59,16 @@ def main(directory: str) -> int:
             levels = rule_levels(run)
             for result in run.get("results", []):
                 rule_id = result.get("ruleId", "<no rule id>")
+                # A `# codeql[rule-id]` comment in the source marks a result
+                # suppressed. Honouring it is what makes the gate usable: without
+                # it the only way past a reviewed, accepted finding is to delete
+                # the check for everyone. Suppressions are printed, so an
+                # accepted finding stays visible instead of disappearing.
+                if result.get("suppressions"):
+                    suppressed.append(
+                        f"suppressed | {rule_id} | {location_of(result)}"
+                    )
+                    continue
                 level = result.get("level") or levels.get(rule_id, "warning")
                 message = result.get("message", {}).get("text", "").strip()
                 line = f"{level:>7} | {rule_id} | {location_of(result)} | {message}"
@@ -67,7 +78,15 @@ def main(directory: str) -> int:
                     lesser += 1
                     print(line)
 
-    print(f"\nScanned {len(files)} SARIF file(s): {len(errors)} error, {lesser} warning/note.")
+    if suppressed:
+        print("\nSuppressed by an in-source `# codeql[...]` comment:\n")
+        for line in suppressed:
+            print(f"  {line}")
+
+    print(
+        f"\nScanned {len(files)} SARIF file(s): {len(errors)} error, "
+        f"{lesser} warning/note, {len(suppressed)} suppressed."
+    )
     if errors:
         print("\nCodeQL found error-severity issues:\n")
         for line in errors:
