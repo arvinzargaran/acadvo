@@ -1,6 +1,7 @@
 import json
 import logging
 import random
+import re
 import time
 import uuid
 
@@ -40,6 +41,13 @@ MAX_HISTORY_MESSAGES = 50
 AI_MAX_ATTEMPTS = 3
 AI_BACKOFF_BASE = 0.5  # seconds; delays ~0.5s, 1.0s, 2.0s
 AI_BACKOFF_JITTER = 0.25  # seconds; added uniformly on top of each delay
+# Ceiling on honouring a provider-stated retry delay. Groq's free tier answers a
+# rate-limited call with the exact number of seconds until the window reopens,
+# and that number is routinely ~20s — far longer than any exponential backoff
+# starting at half a second. Waiting it out is the difference between the tool
+# loop working and failing every time; the cap stops a pathological value from
+# holding a request open indefinitely.
+AI_MAX_PROVIDER_DELAY = 30.0
 
 
 def _is_transient_groq_error(exc: Exception) -> bool:
@@ -62,6 +70,50 @@ def _is_transient_groq_error(exc: Exception) -> bool:
         status = getattr(exc, "status_code", None)
         return status is not None and status >= 500
     return False
+
+
+_RETRY_AFTER_RE = re.compile(r"try again in ([0-9]+(?:\.[0-9]+)?)\s*s", re.IGNORECASE)
+
+
+def _provider_retry_delay(exc: Exception) -> float | None:
+    """Seconds the provider asked us to wait, if it said.
+
+    Groq returns this two ways: a Retry-After header, and a sentence in the
+    error body. The header is preferred; the body is parsed because the SDK
+    does not always surface headers on the exception.
+    """
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers:
+        raw = headers.get("retry-after") or headers.get("Retry-After")
+        if raw:
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                pass
+    match = _RETRY_AFTER_RE.search(str(exc))
+    if match:
+        return float(match.group(1))
+    return None
+
+
+def _error_detail(exc: Exception) -> dict:
+    """Describe a Groq failure well enough to act on it.
+
+    "transient failure" on its own cannot be diagnosed: a 429 for too many
+    requests, a 429 for one request larger than the whole per-minute allowance,
+    a 500 and a dropped connection all read identically, and they call for
+    completely different responses — wait, shrink the request, retry, check the
+    network. The message is the provider's own and carries no user content.
+    """
+    detail = {"error_type": type(exc).__name__}
+    status = getattr(exc, "status_code", None)
+    if status is not None:
+        detail["status_code"] = status
+    message = str(exc)
+    if message:
+        detail["error_message"] = message[:300]
+    return detail
 
 
 def _extract_usage(response) -> dict | None:
@@ -158,19 +210,32 @@ async def send_message(
                     record_ai_failure()
                     logger.warning(
                         "groq transient failure, retries exhausted",
-                        extra={"ai_round": round_no, "attempts": attempt + 1},
+                        extra={
+                            "ai_round": round_no,
+                            "attempts": attempt + 1,
+                            **_error_detail(exc),
+                        },
                     )
                     raise AIUnavailableError() from exc
 
                 delay = AI_BACKOFF_BASE * (2 ** attempt) + random.uniform(
                     0, AI_BACKOFF_JITTER
                 )
+                # A rate limit is not a blip to back off from — it is a stated
+                # wait. Exponential backoff from 0.5s burns all three attempts
+                # in two seconds against a window that reopens in twenty, which
+                # is why a tool call followed by its answer never completed on
+                # the free tier: two rounds do not fit in one minute's budget.
+                stated = _provider_retry_delay(exc)
+                if stated is not None:
+                    delay = min(max(stated + 0.5, delay), AI_MAX_PROVIDER_DELAY)
                 logger.warning(
                     "groq transient failure, retrying",
                     extra={
                         "ai_round": round_no,
                         "attempt": attempt + 1,
                         "retry_in_ms": round(delay * 1000, 1),
+                        **_error_detail(exc),
                     },
                 )
                 time.sleep(delay)
