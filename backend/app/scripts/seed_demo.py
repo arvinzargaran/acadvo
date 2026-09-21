@@ -42,6 +42,7 @@ from app.services.auth import hash_password
 DEMO_EMAIL = "demo@acadvo.app"
 DEMO_PASSWORD = "DemoStudent2026!"
 DEMO_NAME = "Alex Morgan"
+SEED_UNIVERSITY = "York University"
 
 # (bucket, credits required, description)
 REQUIREMENTS = [
@@ -57,21 +58,21 @@ COURSES = [
     ("EECS 1012", "Net-Centric Introduction to Computer Science", 3.00, "completed", "Fall 2023", "A", "Major Core"),
     ("EECS 1015", "Introduction to Computer Science I", 3.00, "completed", "Fall 2023", "A+", "Major Core"),
     ("MATH 1013", "Applied Calculus I", 3.00, "completed", "Fall 2023", "B+", "Mathematics"),
-    ("HUMA 1105", "Myth and Imagination", 3.00, "completed", "Fall 2023", "A-", "General Education"),
+    ("HUMA 1105", "Myth and Imagination", 3.00, "completed", "Fall 2023", "B+", "General Education"),
     ("EECS 1021", "Object Oriented Programming", 3.00, "completed", "Winter 2024", "A", "Major Core"),
-    ("EECS 1022", "Programming for Mobile Computing", 3.00, "completed", "Winter 2024", "A-", "Major Core"),
+    ("EECS 1022", "Programming for Mobile Computing", 3.00, "completed", "Winter 2024", "A", "Major Core"),
     ("MATH 1014", "Applied Calculus II", 3.00, "completed", "Winter 2024", "B", "Mathematics"),
-    ("MATH 1090", "Introduction to Logic for Computer Science", 3.00, "completed", "Winter 2024", "A-", "Mathematics"),
+    ("MATH 1090", "Introduction to Logic for Computer Science", 3.00, "completed", "Winter 2024", "B+", "Mathematics"),
     ("EECS 2001", "Introduction to the Theory of Computation", 3.00, "completed", "Fall 2024", "B+", "Major Core"),
     ("EECS 2011", "Fundamentals of Data Structures", 3.00, "completed", "Fall 2024", "A", "Major Core"),
     ("EECS 2030", "Advanced Object Oriented Programming", 3.00, "completed", "Fall 2024", "A", "Major Core"),
     ("MATH 2030", "Elementary Probability", 3.00, "completed", "Fall 2024", "B", "Mathematics"),
     ("EECS 2021", "Computer Organization", 3.00, "completed", "Winter 2025", "B+", "Major Core"),
     ("EECS 2200", "Electrical Circuits and Signals", 3.00, "completed", "Winter 2025", "B", "Major Electives"),
-    ("EECS 3101", "Design and Analysis of Algorithms", 3.00, "completed", "Winter 2025", "A-", "Major Core"),
+    ("EECS 3101", "Design and Analysis of Algorithms", 3.00, "completed", "Winter 2025", "A", "Major Core"),
     ("SOSC 1140", "Self, Culture and Society", 3.00, "completed", "Winter 2025", "A", "General Education"),
     ("EECS 3201", "Digital Logic Design", 3.00, "completed", "Fall 2025", "B+", "Major Electives"),
-    ("EECS 3213", "Communication Networks", 3.00, "completed", "Fall 2025", "A-", "Major Electives"),
+    ("EECS 3213", "Communication Networks", 3.00, "completed", "Fall 2025", "B+", "Major Electives"),
     ("EECS 3221", "Operating System Fundamentals", 3.00, "completed", "Fall 2025", "A", "Major Core"),
     ("EECS 3311", "Software Design", 3.00, "completed", "Fall 2025", "A+", "Major Core"),
     ("EECS 3421", "Introduction to Database Systems", 3.00, "in_progress", "Winter 2026", None, "Major Core"),
@@ -179,7 +180,7 @@ async def seed() -> None:
             print(f"reset {DEMO_EMAIL}")
 
         user.full_name = DEMO_NAME
-        user.university = "York University"
+        user.university = SEED_UNIVERSITY
         user.program = "Computer Science"
         user.start_year = 2023
         user.expected_graduation_year = 2027

@@ -5,6 +5,7 @@ course pointing at a requirement bucket that does not exist, or a completed
 course with no grade, produces a demo that contradicts the product's own rules.
 """
 
+from app.data.grading_scales import build_grade_map, get_scale
 from app.models.degree import CourseStatus
 from app.scripts.seed_demo import COURSES, DEMO_EMAIL, PROJECTS, REQUIREMENTS, TIMELINE
 
@@ -55,3 +56,28 @@ def test_projects_and_timeline_are_populated():
 
 def test_demo_account_is_not_a_real_looking_address():
     assert DEMO_EMAIL.endswith("@acadvo.app")
+
+
+def test_every_grade_exists_on_the_seeded_university_scale():
+    """York's 9-point scale has no minus grades.
+
+    The first version of this dataset used A-, which the GPA calculation does
+    not recognise: it logged a warning and skipped those courses, so the demo
+    quietly showed a GPA computed from three fewer courses than it listed. A
+    grade that does not exist on the scale is worse than a wrong one, because
+    nothing in the interface says a course was dropped.
+    """
+    from app.scripts.seed_demo import SEED_UNIVERSITY
+
+    scale, using_fallback = get_scale(SEED_UNIVERSITY)
+    # Without this the test passes against the generic fallback scale, which
+    # accepts minus grades — exactly the letters this is meant to catch.
+    assert not using_fallback, f"no grading scale registered for {SEED_UNIVERSITY}"
+    grade_map = build_grade_map(scale)
+    for code, _name, _credits, status, _term, grade, _bucket in COURSES:
+        if grade is None:
+            continue
+        assert grade.upper() in grade_map, (
+            f"{code} has grade {grade!r}, which is not on {SEED_UNIVERSITY}'s scale "
+            f"(valid: {sorted(grade_map)})"
+        )
