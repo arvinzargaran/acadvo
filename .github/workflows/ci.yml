@@ -218,8 +218,21 @@ jobs:
           languages: python,javascript-typescript
           queries: security-extended
 
+      # `upload: false` deliberately. Uploading hands the results to the
+      # Security tab, which means the job passes whatever CodeQL found and the
+      # findings are only seen by someone who goes looking. It also fails
+      # outright when code scanning is disabled on the repository, which makes a
+      # security gate depend on a setting outside the workflow. Writing SARIF to
+      # disk and grading it here keeps the gate inside CI: new error-severity
+      # findings fail the build, wherever the repository settings happen to be.
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@a2983b8bed1923f44751c5c43237f479442827b3 # v3
+        with:
+          upload: false
+          output: codeql-results
+
+      - name: Fail on CodeQL findings
+        run: python3 .github/scripts/codeql_gate.py codeql-results
 
   secret-scan:
     name: Secret scan
