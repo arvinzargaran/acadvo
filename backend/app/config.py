@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     # The only vision-capable model Groq currently serves. Unlike the above it
     # writes <think>…</think> into the content itself, which is why every JSON
     # path reads its output through `app.ai.client.completion_text`.
-    GROQ_VISION_MODEL: str = "qwen/qwen3.6-27b"
+    GROQ_VISION_MODEL: str = "qwen/qwen3.8-27b"
     # Sent with every vision call, and load-bearing rather than a tuning knob.
     #
     # Left to reason freely, Qwen spends the *entire* completion budget thinking
