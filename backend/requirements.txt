@@ -13,7 +13,7 @@ pydantic-settings==2.14.2
 # PyJWT, not python-jose: python-jose is effectively unmaintained and carries an
 # unfixed advisory (PYSEC-2025-185) on top of CVE-2024-33663 (algorithm
 # confusion) and CVE-2024-33664 (JWT-bomb decompression DoS).
-pyjwt==2.13.0
+pyjwt==2.15.0
 bcrypt==5.0.0
 groq==1.5.0
 pdfplumber==0.11.10
